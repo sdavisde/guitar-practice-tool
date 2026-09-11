@@ -90,3 +90,55 @@ export function NeckStrip({ path }: { path: Cand[] }) {
     </svg>
   );
 }
+
+const TAB_STRINGS: Record<string, number[]> = {
+  "1-3": [3, 2, 1],
+  "2-4": [4, 3, 2],
+  "3-5": [5, 4, 3],
+};
+const TAB_LABELS = ["e", "B", "G", "D", "A", "E"]; // string 1 → 6, top to bottom
+
+export function TabStrip({ path }: { path: Cand[] }) {
+  const colW = 58, gutter = 20, rh = 17, top = 24, pad = 6;
+  const W = gutter + path.length * colW + pad;
+  const H = top + 5 * rh + 12;
+  const lineY = (s: number) => top + (s - 1) * rh;
+  const colX = (i: number) => gutter + i * colW + colW / 2;
+  return (
+    <svg
+      width={W}
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      className="mb-3 mt-1 block"
+      role="img"
+      aria-label={`Tablature for ${path.map((c) => c.chord.label).join(", ")}`}
+    >
+      {TAB_LABELS.map((nm, i) => (
+        <g key={nm + i}>
+          <line x1={gutter} y1={lineY(i + 1)} x2={W - pad} y2={lineY(i + 1)} stroke="var(--line)" strokeWidth={1} />
+          <text x={gutter - 6} y={lineY(i + 1) + 3.5} fontSize={10} fill="var(--muted)" textAnchor="end">{nm}</text>
+        </g>
+      ))}
+      {path.map((c, i) => {
+        const x = colX(i), col = famCol(c), strings = TAB_STRINGS[c.set];
+        return (
+          <g key={i}>
+            <text x={x} y={top - 12} textAnchor="middle" fontSize={12} fontWeight={600} fill={col}>
+              {c.chord.label}
+            </text>
+            {c.frets.map((fr, j) => {
+              const y = lineY(strings[j]), isRoot = c.tones[j] === c.chord.root;
+              return (
+                <g key={j}>
+                  <rect x={x - 11} y={y - 7.5} width={22} height={15} rx={4} fill="var(--bg)" />
+                  {isRoot && <rect x={x - 10} y={y - 7} width={20} height={14} rx={4} fill="none" stroke={col} strokeWidth={1.2} />}
+                  <text x={x} y={y + 4} textAnchor="middle" fontSize={11.5} fontWeight={600} fill={col}>{fr}</text>
+                </g>
+              );
+            })}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
