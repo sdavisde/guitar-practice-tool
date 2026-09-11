@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #edf0f3;
+  --panel: #ffffff;
+  --ink: #1b2430;
+  --ink2: #4c5866;
+  --muted: #8a94a0;
+  --line: #cbd2da;
+  --maj: #1d9e75;
+  --min: #7f77dd;
+  --dim: #c0702a;
+  --sus: #3e7cb1;
+}
+
+body {
+  font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+}
