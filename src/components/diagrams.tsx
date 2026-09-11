@@ -1,4 +1,4 @@
-import { Cand, QUAL, SETS, MAX_FRET } from "@/lib/engine";
+import { Cand, QUAL, SetId, MAX_FRET } from "@/lib/engine";
 
 export const FAM_COLOR: Record<string, string> = {
   maj: "var(--maj)", min: "var(--min)", dim: "var(--dim)", sus: "var(--sus)",
@@ -48,97 +48,83 @@ function neckShort(c: Cand): string {
   return base + (f === "min" ? "m" : f === "dim" ? "°" : "");
 }
 
-export function NeckStrip({ path }: { path: Cand[] }) {
-  const lanes = 3, laneH = 30, W = 920, left = 40, right = 30, top = 12;
-  const H = top + lanes * laneH + 22;
-  const fx = (f: number) => left + f * ((W - left - right) / MAX_FRET);
-  const placed: { lane: number; x: number }[] = [];
-  const pts = path.map((c) => {
-    const lane = SETS[c.set].lane;
-    const x = fx(c.avg);
-    let y = top + lane * laneH + laneH / 2;
-    const near = placed.filter((p) => p.lane === lane && Math.abs(p.x - x) < 22).length;
-    if (near) y += (near % 2 ? -1 : 1) * 12;
-    placed.push({ lane, x });
-    return { x, y, c };
-  });
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="mb-3 mt-1 block w-full max-w-[920px]" role="img" aria-label="Position of each chord on the neck">
-      {Array.from({ length: lanes }, (_, l) => {
-        const y = top + l * laneH + laneH / 2;
-        return (
-          <g key={l}>
-            <line x1={fx(0)} y1={y} x2={fx(MAX_FRET)} y2={y} stroke="var(--line)" strokeWidth={1} />
-            <text x={fx(0) - 6} y={y + 4} fontSize={10} fill="var(--muted)" textAnchor="end">{["1–3", "2–4", "3–5"][l]}</text>
-          </g>
-        );
-      })}
-      {Array.from({ length: MAX_FRET + 1 }, (_, f) => (
-        <g key={f}>
-          <line x1={fx(f)} y1={top} x2={fx(f)} y2={top + lanes * laneH} stroke="var(--line)" strokeWidth={f === 0 ? 2 : 0.6} />
-          <text x={fx(f)} y={H - 4} fontSize={10} fill="var(--muted)" textAnchor="middle">{f}</text>
-        </g>
-      ))}
-      {[3, 5, 7, 9, 12, 15].map((f) => <circle key={f} cx={fx(f)} cy={H - 15} r={1.6} fill="var(--muted)" />)}
-      <polyline points={pts.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke="var(--ink)" strokeWidth={1.2} strokeOpacity={0.55} />
-      {pts.map((p, i) => (
-        <g key={i}>
-          <circle cx={p.x} cy={p.y} r={10} fill={famCol(p.c)} />
-          <text x={p.x} y={p.y + 3.5} textAnchor="middle" fontSize={9.5} fontWeight={600} fill="#fff">{neckShort(p.c)}</text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-const TAB_STRINGS: Record<string, number[]> = {
+// Which real string each index of a cand's frets/tones sits on. String 1 = high e.
+const SET_STRINGS: Record<SetId, number[]> = {
   "1-3": [3, 2, 1],
   "2-4": [4, 3, 2],
   "3-5": [5, 4, 3],
 };
-const TAB_LABELS = ["e", "B", "G", "D", "A", "E"]; // string 1 → 6, top to bottom
+const STRING_NAMES = ["e", "B", "G", "D", "A", "E"]; // string 1 → 6, top to bottom
+const INLAYS = [3, 5, 7, 9, 12, 15];
 
-export function TabStrip({ path }: { path: Cand[] }) {
-  const colW = 58, gutter = 20, rh = 17, top = 24, pad = 6;
-  const W = gutter + path.length * colW + pad;
-  const H = top + 5 * rh + 12;
-  const lineY = (s: number) => top + (s - 1) * rh;
-  const colX = (i: number) => gutter + i * colW + colW / 2;
+export function FretMap({ path }: { path: Cand[] }) {
+  const W = 920, left = 52, right = 16, top = 16, rowH = 25;
+  const H = top + 5 * rowH + 26;
+  const fw = (W - left - right) / MAX_FRET;
+  const sy = (s: number) => top + (s - 1) * rowH;
+  const fx = (f: number) => (f === 0 ? left - 18 : left + (f - 0.5) * fw);
+  const boardTop = sy(1), boardBot = sy(6), midY = (boardTop + boardBot) / 2;
+
+  const shapes = path.map((c) => {
+    const strings = SET_STRINGS[c.set];
+    const notes = c.frets.map((fr, j) => ({
+      x: fx(fr), y: sy(strings[j]), isRoot: c.tones[j] === c.chord.root,
+    }));
+    return { c, notes, root: notes.find((n) => n.isRoot)! };
+  });
+
   return (
     <svg
-      width={W}
-      height={H}
       viewBox={`0 0 ${W} ${H}`}
-      className="mb-3 mt-1 block"
+      className="mb-3 mt-1 block w-full max-w-[920px]"
       role="img"
-      aria-label={`Tablature for ${path.map((c) => c.chord.label).join(", ")}`}
+      aria-label={`Fretboard map showing where ${path.map((c) => c.chord.label).join(", ")} sit on the neck, with each chord's root note marked`}
     >
-      {TAB_LABELS.map((nm, i) => (
-        <g key={nm + i}>
-          <line x1={gutter} y1={lineY(i + 1)} x2={W - pad} y2={lineY(i + 1)} stroke="var(--line)" strokeWidth={1} />
-          <text x={gutter - 6} y={lineY(i + 1) + 3.5} fontSize={10} fill="var(--muted)" textAnchor="end">{nm}</text>
+      {INLAYS.map((f) => (
+        <g key={`in${f}`} opacity={0.5}>
+          {f === 12 ? (
+            <>
+              <circle cx={fx(f)} cy={midY - rowH * 0.9} r={5} fill="var(--line)" />
+              <circle cx={fx(f)} cy={midY + rowH * 0.9} r={5} fill="var(--line)" />
+            </>
+          ) : (
+            <circle cx={fx(f)} cy={midY} r={5} fill="var(--line)" />
+          )}
         </g>
       ))}
-      {path.map((c, i) => {
-        const x = colX(i), col = famCol(c), strings = TAB_STRINGS[c.set];
-        return (
-          <g key={i}>
-            <text x={x} y={top - 12} textAnchor="middle" fontSize={12} fontWeight={600} fill={col}>
-              {c.chord.label}
-            </text>
-            {c.frets.map((fr, j) => {
-              const y = lineY(strings[j]), isRoot = c.tones[j] === c.chord.root;
-              return (
-                <g key={j}>
-                  <rect x={x - 11} y={y - 7.5} width={22} height={15} rx={4} fill="var(--bg)" />
-                  {isRoot && <rect x={x - 10} y={y - 7} width={20} height={14} rx={4} fill="none" stroke={col} strokeWidth={1.2} />}
-                  <text x={x} y={y + 4} textAnchor="middle" fontSize={11.5} fontWeight={600} fill={col}>{fr}</text>
-                </g>
-              );
-            })}
-          </g>
-        );
-      })}
+      {Array.from({ length: MAX_FRET + 1 }, (_, f) => (
+        <line key={`w${f}`} x1={left + f * fw} y1={boardTop} x2={left + f * fw} y2={boardBot}
+          stroke={f === 0 ? "var(--ink)" : "var(--line)"} strokeWidth={f === 0 ? 3 : 0.8} />
+      ))}
+      {STRING_NAMES.map((nm, i) => (
+        <g key={nm + i}>
+          <line x1={left - 26} y1={sy(i + 1)} x2={W - right} y2={sy(i + 1)} stroke="var(--line)" strokeWidth={1} />
+          <text x={left - 34} y={sy(i + 1) + 3.5} fontSize={10} fill="var(--muted)" textAnchor="end">{nm}</text>
+        </g>
+      ))}
+      {Array.from({ length: MAX_FRET }, (_, i) => (
+        <text key={`n${i}`} x={fx(i + 1)} y={H - 6} fontSize={10} fill="var(--muted)" textAnchor="middle">{i + 1}</text>
+      ))}
+      {shapes.map(({ c, notes }, i) => (
+        <polyline key={`s${i}`} points={notes.map((n) => `${n.x},${n.y}`).join(" ")}
+          fill="none" stroke={famCol(c)} strokeWidth={1.5} strokeOpacity={0.4} />
+      ))}
+      <polyline points={shapes.map((s) => `${s.root.x},${s.root.y}`).join(" ")}
+        fill="none" stroke="var(--ink)" strokeWidth={1.2} strokeOpacity={0.45} strokeDasharray="4 4" />
+      {shapes.map(({ c, notes }, i) =>
+        notes.filter((n) => !n.isRoot).map((n, j) => (
+          <circle key={`t${i}-${j}`} cx={n.x} cy={n.y} r={4.5} fill={famCol(c)} fillOpacity={0.5} />
+        ))
+      )}
+      {shapes.map(({ c, root }, i) => (
+        <g key={`r${i}`}>
+          <circle cx={root.x} cy={root.y} r={10} fill={famCol(c)} />
+          <circle cx={root.x} cy={root.y} r={13} fill="none" stroke={famCol(c)} strokeWidth={1.5} />
+          <text x={root.x} y={root.y + 3.5} textAnchor="middle" fontSize={9.5} fontWeight={600} fill="#fff">
+            {neckShort(c)}
+          </text>
+        </g>
+      ))}
     </svg>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { candidates, kBest, randomPath, parseProgression, STRATEGIES, Cand, noteNames, Section } from "@/lib/engine";
-import { ChordDiagram, TabStrip, famCol } from "@/components/diagrams";
+import { ChordDiagram, FretMap, famCol } from "@/components/diagrams";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
 
@@ -73,7 +73,7 @@ export function SectionCard({ section, songKey }: { section: Section; songKey: s
         </p>
       ) : (
         <>
-          <div className="overflow-x-auto"><TabStrip path={path} /></div>
+          <FretMap path={path} />
           <div className="flex flex-wrap gap-3">
             {path.map((c, i) => (
               <div key={i} className="w-[112px] rounded-xl bg-[var(--panel)] p-2.5 pb-2">
