@@ -21,7 +21,15 @@ export default function Home() {
 
       <main>
         {song.sections.map((s, i) => (
-          <SectionSheet key={`${s.name}-${i}-${s.tokens.join(" ")}-${song.songKey}`} section={s} songKey={song.songKey} index={i} notation={song.notation} />
+          <SectionSheet
+            key={`${s.name}-${i}-${s.tokens.join(" ")}-${song.songKey}`}
+            section={s}
+            songKey={song.songKey}
+            index={i}
+            notation={song.notation}
+            onSplit={(tokenIndex) => song.splitSection(i, tokenIndex)}
+            onJoin={song.canJoin(i) ? () => song.joinSection(i) : undefined}
+          />
         ))}
       </main>
 

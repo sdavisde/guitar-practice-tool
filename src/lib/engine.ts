@@ -346,6 +346,62 @@ export function joinSectionAt(secs: Section[], sectionIndex: number): Section[] 
   );
 }
 
+// ---- manual splits ----
+
+/** Cut points per base section: `splits[i]` holds token indices where base section `i` is cut. */
+export type SplitMap = Record<number, number[]>;
+
+/** Where a displayed section came from: its base section, and its token offset inside it. */
+export interface SplitOrigin { baseIndex: number; tokenStart: number }
+
+/** Keep only cuts that land strictly inside a section of `tokenCount` tokens; sorted, deduped. */
+export function normalizeCuts(cuts: number[] | undefined, tokenCount: number): number[] {
+  if (!cuts?.length) return [];
+  const inside = cuts.filter((c) => Number.isInteger(c) && c > 0 && c < tokenCount);
+  return [...new Set(inside)].sort((a, b) => a - b);
+}
+
+/**
+ * Expand the base sections into the sections the page shows, applying every cut.
+ * `origins` maps each displayed section back to the base section and token offset it came
+ * from, so a later split or join can be expressed against the base sections again.
+ */
+export function expandSplits(base: Section[], splits: SplitMap): { sections: Section[]; origins: SplitOrigin[] } {
+  const sections: Section[] = [];
+  const origins: SplitOrigin[] = [];
+  base.forEach((s, baseIndex) => {
+    const cuts = normalizeCuts(splits[baseIndex], s.tokens.length);
+    // One base section at a time, so the "(n)" numbering counts only its own pieces —
+    // an identically named section elsewhere in the chart keeps its plain name.
+    let pieces: Section[] = [s];
+    // Each cut divides the last piece, so it is measured from the cut before it.
+    cuts.forEach((cut, k) => { pieces = splitSectionAt(pieces, k, cut - (k ? cuts[k - 1] : 0)); });
+    sections.push(...pieces);
+    [0, ...cuts].forEach((tokenStart) => origins.push({ baseIndex, tokenStart }));
+  });
+  return { sections, origins };
+}
+
+export function addCut(splits: SplitMap, baseIndex: number, tokenIndex: number): SplitMap {
+  const cuts = splits[baseIndex] ?? [];
+  if (cuts.includes(tokenIndex)) return splits;
+  return { ...splits, [baseIndex]: [...cuts, tokenIndex].sort((a, b) => a - b) };
+}
+
+export function removeCut(splits: SplitMap, baseIndex: number, tokenIndex: number): SplitMap {
+  const cuts = splits[baseIndex] ?? [];
+  if (!cuts.includes(tokenIndex)) return splits;
+  return { ...splits, [baseIndex]: cuts.filter((c) => c !== tokenIndex) };
+}
+
+/**
+ * Re-aim a base section's cuts after the piece starting at `tokenStart` changed length:
+ * the cuts up to that piece stay put, the ones after it slide by `delta`.
+ */
+export function shiftCuts(cuts: number[], tokenStart: number, delta: number): number[] {
+  return cuts.map((c) => (c <= tokenStart ? c : c + delta));
+}
+
 export function chartToSections(text: string, currentKey: string): { sections: Section[]; key: string } {
   const secs = importChart(text);
   const flat = ([] as string[]).concat(...secs.map((x) => x.chords));
