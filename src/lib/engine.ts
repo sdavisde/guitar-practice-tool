@@ -57,7 +57,8 @@ export function keySemi(k: string): number {
   return (NOTE[m[1]] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0) + 12) % 12;
 }
 
-export interface Chord { root: number; q: Quality; label: string; name: string; degree: string; literal: boolean }
+/** `bass` is the slash-chord bass note (semitone), when it isn't the root. Voicings ignore it: the triad is the same. */
+export interface Chord { root: number; q: Quality; label: string; name: string; degree: string; literal: boolean; bass?: number }
 
 // Chromatic roots have no scale degree, so spell them as alterations of one.
 const ALT_DEG: Record<number, string> = { 1: "b2", 3: "b3", 6: "#4", 8: "b6", 10: "b7" };
@@ -96,6 +97,16 @@ export function isNumToken(t: string): boolean {
   return !!(m && normSuffix(m[2]).ok);
 }
 
+function withBass(c: Chord, bass: number | undefined): Chord {
+  return bass === undefined || bass === c.root ? c : { ...c, bass };
+}
+
+function bassDegree(bass: number, ks: number): string {
+  const semi = ((bass - ks) % 12 + 12) % 12;
+  const d = DEG_SEMI.indexOf(semi);
+  return d > 0 ? String(d) : ALT_DEG[semi];
+}
+
 export function parseProgression(text: string, key: string): { chords: Chord[]; errors: string[] } {
   const ks = keySemi(key);
   const toks = text.replace(/[|,]/g, " ").split(/\s+/).filter(Boolean);
@@ -103,29 +114,38 @@ export function parseProgression(text: string, key: string): { chords: Chord[]; 
   const errors: string[] = [];
   let flats = FLAT_KEYS.has(key);
   for (const tok of toks) {
-    const base = tok.replace(/\/[1-7]$/, "");
+    const slash = tok.match(/\/([1-7])$/);
+    const base = slash ? tok.slice(0, -2) : tok;
     const m = base.match(/^([1-7])(.*)$/);
     const ns = m ? normSuffix(m[2]) : { ok: false, q: null };
     if (m && ns.ok) {
       const d = +m[1];
       const q = ns.q ?? DIATONIC[d];
       const root = (ks + DEG_SEMI[d]) % 12;
-      chords.push({
+      chords.push(withBass({
         root, q,
-        label: m[1] + (q === DIATONIC[d] && !m[2] ? "" : QUAL[q].disp || "M"),
+        label: m[1] + (q === DIATONIC[d] && !m[2] ? "" : QUAL[q].disp || "M") + (slash ? slash[0] : ""),
         name: "", degree: degreeLabel(root, q, ks), literal: false,
-      });
+      }, slash ? (ks + DEG_SEMI[+slash[1]]) % 12 : undefined));
     } else {
       const cs = parseChordSymbol(tok);
       if (!cs) { errors.push(tok); continue; }
       if (cs.flat) flats = true;
       if (cs.sharp) flats = false;
-      chords.push({ root: cs.root, q: cs.q, label: "", name: "", degree: degreeLabel(cs.root, cs.q, ks), literal: true });
+      const bass = tok.match(/\/([A-G])([#b]?)$/);
+      chords.push(withBass(
+        { root: cs.root, q: cs.q, label: "", name: "", degree: degreeLabel(cs.root, cs.q, ks), literal: true },
+        bass ? (NOTE[bass[1]] + (bass[2] === "#" ? 1 : bass[2] === "b" ? -1 : 0) + 12) % 12 : undefined,
+      ));
     }
   }
   const names = flats ? FLAT : SHARP;
   for (const c of chords) {
     c.name = names[c.root] + QUAL[c.q].disp;
+    if (c.bass !== undefined) {
+      c.name += "/" + names[c.bass];
+      c.degree += "/" + bassDegree(c.bass, ks);
+    }
     if (!c.label) c.label = c.name;
   }
   return { chords, errors };

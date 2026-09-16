@@ -6,6 +6,8 @@ import { FAM_COLOR } from "@/components/diagrams";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Button } from "@/components/ui/button";
+import { ShuffleIcon } from "@/components/icons";
 
 type Props = {
   sections: Section[];
@@ -13,6 +15,7 @@ type Props = {
   notation: Notation;
   onChangeNotation: (notation: Notation) => void;
   onChangeTokens: (index: number, progression: string) => void;
+  onRandomize: () => void;
 };
 
 const NOTATIONS: { value: Notation; label: string }[] = [
@@ -21,10 +24,14 @@ const NOTATIONS: { value: Notation; label: string }[] = [
 ];
 
 /** The chart at a glance: one row per section, with the progression editable in place. */
-export function SongIndex({ sections, songKey, notation, onChangeNotation, onChangeTokens }: Props) {
+export function SongIndex({ sections, songKey, notation, onChangeNotation, onChangeTokens, onRandomize }: Props) {
   return (
     <div className="flex flex-col">
-      <div className="flex items-center justify-end gap-2.5 pb-2">
+      <div className="flex items-center gap-2.5 pb-2">
+        <Button variant="outline" onClick={onRandomize} title="New random progression in a random key"
+          className="mr-auto h-[26px] rounded-[6px] px-2.5 text-[12px] [&_svg:not([class*='size-'])]:size-3.5">
+          <ShuffleIcon /> Randomize
+        </Button>
         <Label>Show as</Label>
         <ToggleGroup
           type="single"

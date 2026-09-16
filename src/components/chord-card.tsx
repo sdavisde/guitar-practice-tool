@@ -11,7 +11,7 @@ export function ChordCard({ cand, names, notation, role = "structural" }: { cand
   return (
     <div className={cn("w-[112px] rounded-[12px] border border-border bg-card px-2.5 pt-2.5 pb-2", passing && "border-dashed opacity-60")}>
       <ChordDiagram cand={cand} names={names} />
-      <div className="mt-1 flex items-baseline justify-center gap-1.5">
+      <div className="mt-1 flex flex-wrap items-baseline justify-center gap-x-1.5">
         <span className="text-[16px] font-semibold" style={{ color: famCol(cand) }}>{bigLabel}</span>
         <span className="text-[12px] text-text-secondary">{smallLabel}</span>
       </div>

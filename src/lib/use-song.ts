@@ -4,6 +4,7 @@ import {
   Section, Phrase, Slot, RepeatMode, chartToSections, sectionFromTokens, plainPhrase,
   splitPhraseAt, joinPhraseAt, redetectSection, retokenizeSection,
 } from "@/lib/engine";
+import { randomKey, randomProgression } from "@/lib/random-progression";
 
 export type Notation = "numbers" | "names";
 
@@ -216,6 +217,15 @@ export function useSong() {
     return null;
   }, [songKey]);
 
+  /** Start over with a fresh diatonic progression in a new random key. */
+  const randomizeSong = useCallback(() => {
+    const key = randomKey(songKey);
+    setSongKey(key);
+    setSections([sectionFromTokens("Song", randomProgression(), key)]);
+    setImported(false);
+    setMeta({});
+  }, [songKey]);
+
   const clearSong = useCallback(() => {
     setSections(defaultSections(songKey));
     setImported(false);
@@ -230,6 +240,6 @@ export function useSong() {
   return {
     songKey, setSongKey, sections, imported, meta, updateSection,
     splitPhrase, joinPhrase, redetect, setSectionStrategy, setPhraseStrategy, setRepeat,
-    importChart, clearSong, notation, setNotation,
+    importChart, randomizeSong, clearSong, notation, setNotation,
   };
 }
