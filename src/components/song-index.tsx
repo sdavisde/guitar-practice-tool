@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Section, parseProgression, QUAL } from "@/lib/engine";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Section, parseProgression, QUAL, sectionTokens } from "@/lib/engine";
 import type { Notation } from "@/lib/use-song";
 import { FAM_COLOR } from "@/components/diagrams";
 import { Input } from "@/components/ui/input";
@@ -59,12 +59,19 @@ function SongIndexRow({ index, section, songKey, notation, onCommit }: { index: 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const { chords } = useMemo(() => parseProgression(section.tokens.join(" "), songKey), [section.tokens, songKey]);
+  const tokens = useMemo(() => sectionTokens(section), [section]);
+  const text = tokens.join(" ");
+  // Chords per phrase, so the row can show where the phrases break.
+  const phrases = useMemo(
+    () => section.phrases.map((p) => parseProgression(p.slots.map((s) => s.token).join(" "), songKey).chords),
+    [section.phrases, songKey]
+  );
+  const chords = phrases.flat();
 
   useEffect(() => { if (editing) inputRef.current?.select(); }, [editing]);
 
-  function start() { setDraft(section.tokens.join(" ")); setEditing(true); }
-  function commit() { setEditing(false); if (draft.trim() !== section.tokens.join(" ")) onCommit(draft); }
+  function start() { setDraft(text); setEditing(true); }
+  function commit() { setEditing(false); if (draft.trim() !== text) onCommit(draft); }
 
   // Whichever notation isn't in the big labels shows in the small line, so both are always readable.
   const numbers = notation === "numbers";
@@ -92,9 +99,14 @@ function SongIndexRow({ index, section, songKey, notation, onCommit }: { index: 
           title="Click to edit this progression"
           className="col-start-2 flex w-fit cursor-text flex-wrap items-baseline gap-x-[18px] rounded-md py-1 text-left text-[22px] font-bold leading-none hover:bg-card lg:col-start-3"
         >
-          {chords.length ? chords.map((c, i) => (
-            <span key={i} style={{ color: FAM_COLOR[QUAL[c.q].fam] }}>{numbers ? c.degree : c.name}</span>
-          )) : section.tokens.length ? section.tokens.map((t, i) => (
+          {chords.length ? phrases.map((ph, k) => (
+            <Fragment key={k}>
+              {k > 0 && ph.length > 0 && <span className="text-[16px] font-normal text-muted-foreground" aria-hidden="true">/</span>}
+              {ph.map((c, i) => (
+                <span key={i} style={{ color: FAM_COLOR[QUAL[c.q].fam] }}>{numbers ? c.degree : c.name}</span>
+              ))}
+            </Fragment>
+          )) : tokens.length ? tokens.map((t, i) => (
             <span key={i} className="text-muted-foreground">{t}</span>
           )) : (
             <span className="text-[15px] font-normal text-muted-foreground">Type a progression like 1 5 6m 4</span>

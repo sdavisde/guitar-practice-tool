@@ -11,7 +11,7 @@ export default function Home() {
 
   return (
     <div className="mx-auto max-w-[1248px] px-6 pb-14">
-      <SiteHeader onImport={song.importChart} onClear={song.imported ? song.clearSong : undefined} />
+      <SiteHeader meta={song.meta} onImport={song.importChart} onClear={song.imported ? song.clearSong : undefined} />
 
       <div className="grid grid-cols-1 gap-6 pt-8 pb-7 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-10 [&>*]:min-w-0">
         <KeyPicker value={song.songKey} onChange={song.setSongKey} />
@@ -22,13 +22,17 @@ export default function Home() {
       <main>
         {song.sections.map((s, i) => (
           <SectionSheet
-            key={`${s.name}-${i}-${s.tokens.join(" ")}-${song.songKey}`}
+            key={`${i}-${s.name}`}
             section={s}
             songKey={song.songKey}
             index={i}
             notation={song.notation}
-            onSplit={(tokenIndex) => song.splitSection(i, tokenIndex)}
-            onJoin={song.canJoin(i) ? () => song.joinSection(i) : undefined}
+            onSplit={(slotIndex) => song.splitPhrase(i, slotIndex)}
+            onJoin={(phraseIndex) => song.joinPhrase(i, phraseIndex)}
+            onRedetect={() => song.redetect(i)}
+            onStrategy={(id) => song.setSectionStrategy(i, id)}
+            onPhraseStrategy={(p, id) => song.setPhraseStrategy(i, p, id)}
+            onRepeat={(mode) => song.setRepeat(i, mode)}
           />
         ))}
       </main>

@@ -1,10 +1,10 @@
 "use client";
-import { STRATEGIES } from "@/lib/engine";
+import { STRATEGIES, WANDER_ID } from "@/lib/engine";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-export const WANDER_ID = "wander";
+export { WANDER_ID };
 
-const ITEMS = [
+export const MOVEMENTS = [
   ...STRATEGIES.map((s) => ({ id: s.id, name: s.name, blurb: s.blurb })),
   { id: WANDER_ID, name: "Wander", blurb: "A random valid path." },
 ];
@@ -12,7 +12,7 @@ const ITEMS = [
 export function MovementChips({ value, onChange, label }: { value: string; onChange: (id: string) => void; label: string }) {
   return (
     <ToggleGroup type="single" value={value} onValueChange={(v) => v && onChange(v)} aria-label={label} className="w-full flex-wrap gap-1.5">
-      {ITEMS.map((item) => (
+      {MOVEMENTS.map((item) => (
         <ToggleGroupItem
           key={item.id}
           value={item.id}
