@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { KEYS, Section, chartToSections } from "@/lib/engine";
+import { KEYS, Section, chartToSections, joinSectionAt, sectionBase, splitSectionAt } from "@/lib/engine";
 import { SectionCard } from "@/components/section-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,20 +15,35 @@ export default function Home() {
   const [chart, setChart] = useState("");
   const [open, setOpen] = useState(false);
   const [importError, setImportError] = useState("");
+  // Sections the user has hand-split; null means "follow the text/import as-is".
+  const [override, setOverride] = useState<Section[] | null>(null);
 
-  const sections: Section[] = useMemo(() => {
+  const derived: Section[] = useMemo(() => {
     if (imported?.length) return imported;
     const tokens = text.replace(/[|,]/g, " ").split(/\s+/).filter(Boolean);
     return tokens.length ? [{ name: "Song", tokens }] : [];
   }, [imported, text]);
 
+  const sections = override ?? derived;
+
   function doImport() {
     const { sections: secs, key } = chartToSections(chart, songKey);
     if (!secs.length) { setImportError("No chords found in that chart."); return; }
     setImportError("");
+    setOverride(null);
     setImported(secs);
     setSongKey(key);
     setOpen(false);
+  }
+
+  // `tokenIndex` is an index into the section's tokens, not into its chord cards —
+  // SectionCard maps card -> token so unparsed tokens don't shift the seam.
+  function splitSection(sectionIndex: number, tokenIndex: number) {
+    setOverride((prev) => splitSectionAt(prev ?? derived, sectionIndex, tokenIndex));
+  }
+
+  function joinSection(sectionIndex: number) {
+    setOverride((prev) => joinSectionAt(prev ?? derived, sectionIndex));
   }
 
   return (
@@ -57,7 +72,7 @@ export default function Home() {
               spellCheck={false}
               autoComplete="off"
               aria-label="Chord progression"
-              onChange={(e) => { setText(e.target.value); setImported(null); }}
+              onChange={(e) => { setText(e.target.value); setImported(null); setOverride(null); }}
             />
             <Dialog open={open} onOpenChange={setOpen}>
               <DialogTrigger asChild><Button variant="outline">Paste a chart</Button></DialogTrigger>
@@ -77,7 +92,7 @@ export default function Home() {
               </DialogContent>
             </Dialog>
             {imported && (
-              <Button variant="ghost" size="sm" onClick={() => setImported(null)}>Clear song</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setImported(null); setOverride(null); }}>Clear song</Button>
             )}
           </div>
           <p className="mt-1.5 text-[13px] text-[var(--muted)]">
@@ -96,7 +111,13 @@ export default function Home() {
 
       <main>
         {sections.map((s, i) => (
-          <SectionCard key={`${s.name}-${i}-${s.tokens.join(" ")}-${songKey}`} section={s} songKey={songKey} />
+          <SectionCard
+            key={`${s.name}-${i}-${s.tokens.join(" ")}-${songKey}`}
+            section={s}
+            songKey={songKey}
+            onSplit={(tokenIndex) => splitSection(i, tokenIndex)}
+            onJoin={i > 0 && sectionBase(sections[i - 1].name) === sectionBase(s.name) ? () => joinSection(i) : undefined}
+          />
         ))}
         {!sections.length && (
           <p className="border-t border-[var(--line)] py-5 text-sm text-[var(--ink2)]">

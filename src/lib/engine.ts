@@ -284,6 +284,50 @@ export function collapseTokens(arr: string[]): string[] {
 
 export interface Section { name: string; tokens: string[] }
 
+// ---- section naming (split / join) ----
+
+// "Verse 2 (3)" -> "Verse 2". Only a trailing " (n)" counts as a split marker.
+export function sectionBase(name: string): string {
+  return name.replace(/ \(\d+\)$/, "");
+}
+
+// Number every section sharing `base` sequentially by position; a lone one loses its suffix.
+export function renumberSections(secs: Section[], base: string): Section[] {
+  const hits = secs.reduce<number[]>((a, s, i) => (sectionBase(s.name) === base ? [...a, i] : a), []);
+  const out = secs.slice();
+  hits.forEach((si, k) => {
+    out[si] = { ...out[si], name: hits.length > 1 ? `${base} (${k + 1})` : base };
+  });
+  return out;
+}
+
+export function splitSectionAt(secs: Section[], sectionIndex: number, tokenIndex: number): Section[] {
+  const s = secs[sectionIndex];
+  if (!s) return secs;
+  const a = s.tokens.slice(0, tokenIndex), b = s.tokens.slice(tokenIndex);
+  if (!a.length || !b.length) return secs;
+  const base = sectionBase(s.name);
+  return renumberSections(
+    [...secs.slice(0, sectionIndex), { name: base, tokens: a }, { name: base, tokens: b }, ...secs.slice(sectionIndex + 1)],
+    base
+  );
+}
+
+export function joinSectionAt(secs: Section[], sectionIndex: number): Section[] {
+  const cur = secs[sectionIndex], before = secs[sectionIndex - 1];
+  if (!cur || !before) return secs;
+  const base = sectionBase(before.name);
+  if (sectionBase(cur.name) !== base) return secs;
+  return renumberSections(
+    [
+      ...secs.slice(0, sectionIndex - 1),
+      { name: before.name, tokens: [...before.tokens, ...cur.tokens] },
+      ...secs.slice(sectionIndex + 1),
+    ],
+    base
+  );
+}
+
 export function chartToSections(text: string, currentKey: string): { sections: Section[]; key: string } {
   const secs = importChart(text);
   const flat = ([] as string[]).concat(...secs.map((x) => x.chords));
