@@ -1,7 +1,7 @@
 import { Cand, QUAL, SetId, MAX_FRET } from "@/lib/engine";
 
 export const FAM_COLOR: Record<string, string> = {
-  maj: "var(--maj)", min: "var(--min)", dim: "var(--dim)", sus: "var(--sus)",
+  maj: "var(--fam-maj)", min: "var(--fam-min)", dim: "var(--fam-dim)", sus: "var(--fam-sus)",
 };
 export const famCol = (c: Cand) => FAM_COLOR[QUAL[c.chord.q].fam];
 
@@ -16,10 +16,10 @@ export function ChordDiagram({ cand, names }: { cand: Cand; names: string[] }) {
     <svg viewBox={`0 0 ${W} ${H}`} className="block w-full" role="img" aria-label={`${chord.name} shape`}>
       {Array.from({ length: rows + 1 }, (_, i) => {
         const y = top + i * rh, nut = base === 0 && i === 0;
-        return <line key={i} x1={30} y1={y} x2={86} y2={y} stroke={nut ? "var(--ink)" : "var(--line)"} strokeWidth={nut ? 2.5 : 1} />;
+        return <line key={i} x1={30} y1={y} x2={86} y2={y} stroke={nut ? "var(--neck-ink)" : "var(--neck-line)"} strokeWidth={nut ? 2.5 : 1} />;
       })}
-      {xs.map((x) => <line key={x} x1={x} y1={top} x2={x} y2={top + rows * rh} stroke="var(--line)" strokeWidth={1} />)}
-      {base > 0 && <text x={12} y={top + rh * 0.5 + 4} fontSize={10} fill="var(--muted)" textAnchor="middle">{base + 1}</text>}
+      {xs.map((x) => <line key={x} x1={x} y1={top} x2={x} y2={top + rows * rh} stroke="var(--neck-line)" strokeWidth={1} />)}
+      {base > 0 && <text x={12} y={top + rh * 0.5 + 4} fontSize={10} fill="var(--neck-muted)" textAnchor="middle">{base + 1}</text>}
       {frets.map((fr, i) => {
         const x = xs[i], isRoot = tones[i] === chord.root;
         if (fr === 0) return (
@@ -49,7 +49,7 @@ function neckShort(c: Cand): string {
 }
 
 // Which real string each index of a cand's frets/tones sits on. String 1 = high e.
-const SET_STRINGS: Record<SetId, number[]> = {
+export const SET_STRINGS: Record<SetId, number[]> = {
   "1-3": [3, 2, 1],
   "2-4": [4, 3, 2],
   "3-5": [5, 4, 3],
@@ -84,33 +84,33 @@ export function FretMap({ path }: { path: Cand[] }) {
         <g key={`in${f}`} opacity={0.5}>
           {f === 12 ? (
             <>
-              <circle cx={fx(f)} cy={midY - rowH * 0.9} r={5} fill="var(--line)" />
-              <circle cx={fx(f)} cy={midY + rowH * 0.9} r={5} fill="var(--line)" />
+              <circle cx={fx(f)} cy={midY - rowH * 0.9} r={5} fill="var(--neck-line)" />
+              <circle cx={fx(f)} cy={midY + rowH * 0.9} r={5} fill="var(--neck-line)" />
             </>
           ) : (
-            <circle cx={fx(f)} cy={midY} r={5} fill="var(--line)" />
+            <circle cx={fx(f)} cy={midY} r={5} fill="var(--neck-line)" />
           )}
         </g>
       ))}
       {Array.from({ length: MAX_FRET + 1 }, (_, f) => (
         <line key={`w${f}`} x1={left + f * fw} y1={boardTop} x2={left + f * fw} y2={boardBot}
-          stroke={f === 0 ? "var(--ink)" : "var(--line)"} strokeWidth={f === 0 ? 3 : 0.8} />
+          stroke={f === 0 ? "var(--neck-ink)" : "var(--neck-line)"} strokeWidth={f === 0 ? 3 : 0.8} />
       ))}
       {STRING_NAMES.map((nm, i) => (
         <g key={nm + i}>
-          <line x1={left - 26} y1={sy(i + 1)} x2={W - right} y2={sy(i + 1)} stroke="var(--line)" strokeWidth={1} />
-          <text x={left - 34} y={sy(i + 1) + 3.5} fontSize={10} fill="var(--muted)" textAnchor="end">{nm}</text>
+          <line x1={left - 26} y1={sy(i + 1)} x2={W - right} y2={sy(i + 1)} stroke="var(--neck-line)" strokeWidth={1} />
+          <text x={left - 34} y={sy(i + 1) + 3.5} fontSize={10} fill="var(--neck-muted)" textAnchor="end">{nm}</text>
         </g>
       ))}
       {Array.from({ length: MAX_FRET }, (_, i) => (
-        <text key={`n${i}`} x={fx(i + 1)} y={H - 6} fontSize={10} fill="var(--muted)" textAnchor="middle">{i + 1}</text>
+        <text key={`n${i}`} x={fx(i + 1)} y={H - 6} fontSize={10} fill="var(--neck-muted)" textAnchor="middle">{i + 1}</text>
       ))}
       {shapes.map(({ c, notes }, i) => (
         <polyline key={`s${i}`} points={notes.map((n) => `${n.x},${n.y}`).join(" ")}
           fill="none" stroke={famCol(c)} strokeWidth={1.5} strokeOpacity={0.4} />
       ))}
       <polyline points={shapes.map((s) => `${s.root.x},${s.root.y}`).join(" ")}
-        fill="none" stroke="var(--ink)" strokeWidth={1.2} strokeOpacity={0.45} strokeDasharray="4 4" />
+        fill="none" stroke="var(--neck-ink)" strokeWidth={1.2} strokeOpacity={0.45} strokeDasharray="4 4" />
       {shapes.map(({ c, notes }, i) =>
         notes.filter((n) => !n.isRoot).map((n, j) => (
           <circle key={`t${i}-${j}`} cx={n.x} cy={n.y} r={4.5} fill={famCol(c)} fillOpacity={0.5} />

@@ -57,7 +57,24 @@ export function keySemi(k: string): number {
   return (NOTE[m[1]] + (m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0) + 12) % 12;
 }
 
-export interface Chord { root: number; q: Quality; label: string; name: string; literal: boolean }
+export interface Chord { root: number; q: Quality; label: string; name: string; degree: string; literal: boolean }
+
+// Chromatic roots have no scale degree, so spell them as alterations of one.
+const ALT_DEG: Record<number, string> = { 1: "b2", 3: "b3", 6: "#4", 8: "b6", 10: "b7" };
+
+/**
+ * Scale-degree label for a chord: "1", "6m", "5M", "b7" — the number plus a
+ * suffix only when the quality is not the one the key already implies
+ * (chromatic roots are assumed major, as borrowed chords usually are).
+ */
+export function degreeLabel(root: number, q: Quality, ks: number): string {
+  const semi = ((root - ks) % 12 + 12) % 12;
+  const d = DEG_SEMI.indexOf(semi);
+  const num = d > 0 ? String(d) : ALT_DEG[semi];
+  const want: Quality = d > 0 ? DIATONIC[d] : "maj";
+  if (q === want) return num + (want === "min" ? "m" : want === "dim" ? "°" : "");
+  return num + (QUAL[q].disp || "M");
+}
 
 interface ParsedSymbol { root: number; q: Quality; flat: boolean; sharp: boolean }
 
@@ -92,17 +109,18 @@ export function parseProgression(text: string, key: string): { chords: Chord[]; 
     if (m && ns.ok) {
       const d = +m[1];
       const q = ns.q ?? DIATONIC[d];
+      const root = (ks + DEG_SEMI[d]) % 12;
       chords.push({
-        root: (ks + DEG_SEMI[d]) % 12, q,
+        root, q,
         label: m[1] + (q === DIATONIC[d] && !m[2] ? "" : QUAL[q].disp || "M"),
-        name: "", literal: false,
+        name: "", degree: degreeLabel(root, q, ks), literal: false,
       });
     } else {
       const cs = parseChordSymbol(tok);
       if (!cs) { errors.push(tok); continue; }
       if (cs.flat) flats = true;
       if (cs.sharp) flats = false;
-      chords.push({ root: cs.root, q: cs.q, label: "", name: "", literal: true });
+      chords.push({ root: cs.root, q: cs.q, label: "", name: "", degree: degreeLabel(cs.root, cs.q, ks), literal: true });
     }
   }
   const names = flats ? FLAT : SHARP;
@@ -270,10 +288,10 @@ export function detectKey(symbols: ParsedSymbol[]): string {
 export function toNumberToken(tok: string, key: string): string | null {
   const c = parseChordSymbol(tok);
   if (!c) return null;
-  const d = DEG_SEMI.indexOf(((c.root - keySemi(key)) % 12 + 12) % 12);
+  const ks = keySemi(key);
+  const d = DEG_SEMI.indexOf(((c.root - ks) % 12 + 12) % 12);
   if (d < 1) return tok.replace(/\/[A-G][#b]?$/, "");
-  if (c.q === DIATONIC[d]) return String(d) + (DIATONIC[d] === "min" ? "m" : DIATONIC[d] === "dim" ? "°" : "");
-  return String(d) + (QUAL[c.q].disp || "M");
+  return degreeLabel(c.root, c.q, ks);
 }
 
 export function collapseTokens(arr: string[]): string[] {
