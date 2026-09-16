@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Section, Phrase, Slot, RepeatMode, chartToSections, sectionFromTokens, plainPhrase,
+  Section, Phrase, Slot, RepeatMode, LyricLine, LyricSegment, chartToSections, sectionFromTokens, plainPhrase,
   splitPhraseAt, joinPhraseAt, redetectSection, retokenizeSection,
 } from "@/lib/engine";
 import { randomKey, randomProgression } from "@/lib/random-progression";
@@ -48,10 +48,20 @@ function isPhrase(x: unknown): x is Phrase {
     && (x.strategyId === undefined || typeof x.strategyId === "string");
 }
 
+function isSegment(x: unknown): x is LyricSegment {
+  return isRecord(x) && typeof x.text === "string"
+    && (x.slot === undefined || (typeof x.slot === "number" && Number.isInteger(x.slot) && x.slot >= 0));
+}
+
+function isLine(x: unknown): x is LyricLine {
+  return isRecord(x) && Array.isArray(x.segments) && x.segments.every(isSegment);
+}
+
 function isSection(x: unknown): x is Section {
   return isRecord(x) && typeof x.name === "string" && Array.isArray(x.phrases) && x.phrases.every(isPhrase)
     && (x.strategyId === undefined || typeof x.strategyId === "string")
-    && (x.repeat === undefined || x.repeat === "same" || x.repeat === "vary");
+    && (x.repeat === undefined || x.repeat === "same" || x.repeat === "vary")
+    && (x.lyrics === undefined || (Array.isArray(x.lyrics) && x.lyrics.every(isLine)));
 }
 
 const isNotation = (x: unknown): x is Notation => x === "numbers" || x === "names";
@@ -130,6 +140,8 @@ export function useSong() {
   const [imported, setImported] = useState(false);
   const [meta, setMeta] = useState<SongMeta>({});
   const [notation, setNotation] = useState<Notation>("numbers");
+  /** True once localStorage has been read, so a page can hold off showing the default song. */
+  const [ready, setReady] = useState(false);
   const hydrated = useRef(false);
 
   // Load persisted state once on mount (client-only, after first render).
@@ -142,6 +154,7 @@ export function useSong() {
       setMeta(stored.meta ?? {});
       setNotation(stored.notation);
     }
+    setReady(true);
   }, []);
 
   // Save on every change. The first run happens in the same commit as the load
@@ -238,7 +251,7 @@ export function useSong() {
   }, [songKey]);
 
   return {
-    songKey, setSongKey, sections, imported, meta, updateSection,
+    ready, songKey, setSongKey, sections, imported, meta, updateSection,
     splitPhrase, joinPhrase, redetect, setSectionStrategy, setPhraseStrategy, setRepeat,
     importChart, randomizeSong, clearSong, notation, setNotation,
   };

@@ -338,7 +338,16 @@ export interface Phrase { slots: Slot[]; patternId?: string; strategyId?: string
 /** How repeated phrases relate: play every occurrence the same way, or make each one differ. */
 export type RepeatMode = "same" | "vary";
 
-export interface Section { name: string; phrases: Phrase[]; strategyId?: string; repeat?: RepeatMode }
+/**
+ * A run of lyric text that starts under one chord and ends at the next (or at the line end).
+ * `slot` indexes the section's slots (`sectionSlots`); a segment without one is text before the
+ * line's first chord, or a whole line sung over no chord change.
+ */
+export interface LyricSegment { text: string; slot?: number }
+export interface LyricLine { segments: LyricSegment[] }
+
+/** `lyrics` exists only when a chart put words under at least one chord; slots stay valid across split/join. */
+export interface Section { name: string; phrases: Phrase[]; strategyId?: string; repeat?: RepeatMode; lyrics?: LyricLine[] }
 
 export const WANDER_ID = "wander";
 export const DEFAULT_STRATEGY = "stay";
@@ -358,39 +367,138 @@ export function plainPhrase(tokens: string[], origin: Origin = "detected", bars?
   return { origin, slots: toSlots(tokens, "structural", bars) };
 }
 
-type SectionOpts = { bars?: boolean[] } & Partial<Pick<Section, "strategyId" | "repeat">>;
+type SectionOpts = { bars?: boolean[] } & Partial<Pick<Section, "strategyId" | "repeat" | "lyrics">>;
 
+const hasSlots = (lyrics?: LyricLine[]): lyrics is LyricLine[] =>
+  !!lyrics && lyrics.some((l) => l.segments.some((s) => s.slot !== undefined));
+
+/** Phrases follow the lyric lines when the chart had words under the chords; otherwise they are detected. */
 export function sectionFromTokens(name: string, tokens: string[], key: string, opts: SectionOpts = {}): Section {
-  const s: Section = { name, phrases: detectPhrases(tokens, key, { bars: opts.bars }) };
+  const lyrics = hasSlots(opts.lyrics) ? opts.lyrics : undefined;
+  const s: Section = {
+    name,
+    phrases: lyrics ? lyricPhrases(tokens, lyrics, key, opts.bars) : detectPhrases(tokens, key, { bars: opts.bars }),
+  };
   if (opts.strategyId) s.strategyId = opts.strategyId;
   if (opts.repeat) s.repeat = opts.repeat;
+  if (lyrics) s.lyrics = lyrics;
   return s;
 }
 
-/** Throw away hand-made boundaries and detect again; bar marks and movement settings survive. */
+/** Throw away hand-made boundaries and detect again; bar marks, lyrics and movement settings survive. */
 export function redetectSection(section: Section, key: string): Section {
   const slots = sectionSlots(section);
   const bars = slots.map((s) => !!s.bar);
   return sectionFromTokens(section.name, slots.map((s) => s.token), key, {
-    bars: bars.some(Boolean) ? bars : undefined, strategyId: section.strategyId, repeat: section.repeat,
+    bars: bars.some(Boolean) ? bars : undefined, strategyId: section.strategyId, repeat: section.repeat, lyrics: section.lyrics,
   });
 }
 
 /**
  * The section's chords were retyped. Hand-made phrases keep their boundaries when the chord
- * count is unchanged (a chord swap); otherwise the section is detected afresh.
+ * count is unchanged (a chord swap); otherwise the section is detected afresh. Lyrics point at
+ * chords by index, so they survive only a same-length edit too.
  */
 export function retokenizeSection(section: Section, tokens: string[], key: string): Section {
   const old = sectionSlots(section);
-  if (hasManual(section) && old.length === tokens.length) {
+  const sameLength = old.length === tokens.length;
+  if (hasManual(section) && sameLength) {
     let i = 0;
     return { ...section, phrases: section.phrases.map((p) => ({ ...p, slots: p.slots.map((s) => ({ ...s, token: tokens[i++] })) })) };
   }
   const bars = old.map((s) => !!s.bar);
   return sectionFromTokens(section.name, tokens, key, {
-    bars: old.length === tokens.length && bars.some(Boolean) ? bars : undefined,
+    bars: sameLength && bars.some(Boolean) ? bars : undefined,
     strategyId: section.strategyId, repeat: section.repeat,
+    lyrics: sameLength ? section.lyrics : undefined,
   });
+}
+
+/**
+ * Where the words go: for each phrase, the lyric lines sung over it. A line whose chords were
+ * cut into two phrases is split between them at the cut; chords no line mentions (an
+ * instrumental turn) become a wordless line of their own; a line sung over no chord change
+ * follows the nearest preceding line with chords (or leads the next one). Sections without
+ * lyrics get one wordless line per phrase, so a sheet can render every section the same way.
+ */
+export function phraseLyrics(section: Section): LyricLine[][] {
+  const owner: number[] = []; // slot → phrase index
+  section.phrases.forEach((p, pi) => p.slots.forEach(() => owner.push(pi)));
+  const out: LyricLine[][] = section.phrases.map(() => []);
+  const referenced = new Set<number>();
+  let lastPhrase = -1;
+  let pending: LyricLine[] = [];
+  for (const line of section.lyrics ?? []) {
+    const runs: { pi: number; segments: LyricSegment[] }[] = [];
+    let lead: LyricSegment[] = [];
+    for (const seg of line.segments) {
+      const pi = seg.slot === undefined ? undefined : owner[seg.slot];
+      if (pi === undefined) {
+        if (runs.length) runs[runs.length - 1].segments.push(seg); else lead.push(seg);
+        continue;
+      }
+      referenced.add(seg.slot!);
+      const last = runs[runs.length - 1];
+      if (last && last.pi === pi) last.segments.push(seg);
+      else { runs.push({ pi, segments: [...lead, seg] }); lead = []; }
+    }
+    if (!runs.length) {
+      if (lastPhrase >= 0) out[lastPhrase].push(line); else pending.push(line);
+      continue;
+    }
+    out[runs[0].pi].push(...pending);
+    pending = [];
+    for (const r of runs) out[r.pi].push({ segments: r.segments });
+    lastPhrase = runs[runs.length - 1].pi;
+  }
+  if (out.length) out[0].push(...pending);
+  // Chords no line mentions: a wordless line before or after the phrase's sung lines.
+  let off = 0;
+  section.phrases.forEach((p, pi) => {
+    const first = p.slots.findIndex((_, i) => referenced.has(off + i));
+    const before: LyricSegment[] = [], after: LyricSegment[] = [];
+    p.slots.forEach((_, i) => {
+      const slot = off + i;
+      if (!referenced.has(slot)) (first < 0 || i < first ? before : after).push({ text: "", slot });
+    });
+    if (before.length) out[pi].unshift({ segments: before });
+    if (after.length) out[pi].push({ segments: after });
+    off += p.slots.length;
+  });
+  return out;
+}
+
+/** A phrase's words as one string (chords omitted); empty when the phrase is instrumental. */
+export function lyricText(lines: LyricLine[]): string {
+  return lines.map((l) => l.segments.map((s) => s.text).join("")).join(" ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * One phrase per lyric line that names chords (its chords, in order), and one per run of chords
+ * no line names. Lines with the same progression share a pattern id, as detected repeats do,
+ * so the Repeats control applies to them.
+ */
+function lyricPhrases(tokens: string[], lyrics: LyricLine[], key: string, bars?: boolean[]): Phrase[] {
+  const owner = new Array<number>(tokens.length).fill(-1);
+  lyrics.forEach((l, li) => l.segments.forEach((s) => {
+    if (s.slot !== undefined && s.slot < tokens.length && owner[s.slot] < 0) owner[s.slot] = li;
+  }));
+  const phrases: Phrase[] = [];
+  let start = 0;
+  for (let i = 1; i <= tokens.length; i++) {
+    if (i === tokens.length || owner[i] !== owner[start]) {
+      phrases.push({ slots: toSlots(tokens.slice(start, i), "structural", bars, start), origin: "detected" });
+      start = i;
+    }
+  }
+  const ids = phrases.map((p) => {
+    const keys = toUnits(phraseTokens(p), key).map((u) => u.key);
+    return keys.some((k) => k === null) ? null : patternId(keys as string[], key);
+  });
+  const count = new Map<string, number>();
+  for (const id of ids) if (id) count.set(id, (count.get(id) ?? 0) + 1);
+  phrases.forEach((p, i) => { const id = ids[i]; if (id && (count.get(id) ?? 0) > 1) p.patternId = id; });
+  return phrases;
 }
 
 const manual = (p: Phrase, slots: Slot[]): Phrase => {
@@ -666,32 +774,44 @@ const NOISE_RE = /^(-+|x\d+)$/i;
 /** An ASCII tablature staff line (`B|-3-2-3---|`, `G|-----| x8`): an optional string name, then only dashes, frets and technique marks. */
 const STAFF_RE = /^\s*(?:[A-Ga-g][#b]?)?\s*\|?(?=.*-{3,})[-\d|hpbrsxtv/\\~^()*.,\s]*$/i;
 
-/** Chords of one chart section, with `bars[i]` true where chord i starts a bar. */
-export interface RawSection { name: string; chords: string[]; bars: boolean[] }
+/**
+ * Chords of one chart section, with `bars[i]` true where chord i starts a bar. `lyrics` are the
+ * section's words in chart order, each segment's `slot` an index into `chords`; present only
+ * when at least one line sits under chords.
+ */
+export interface RawSection { name: string; chords: string[]; bars: boolean[]; lyrics?: LyricLine[] }
 
 const isChordToken = (t: string) => isNumToken(t) || !!parseChordSymbol(t);
+
+/** Chords of one line, with the column each was written at (none for chords added by `%` or `x2`). */
+interface LineChords { chords: string[]; bars: boolean[]; cols: (number | undefined)[] }
 
 /**
  * One chart line → its chords. Bar lines mark bar starts, `%` repeats the previous bar,
  * a trailing `x2` repeats the line. Lines that are mostly not chords (lyrics) yield null.
+ * Works on the untrimmed line so the columns line up with the lyric line beneath.
  */
-function lineChords(line: string): { chords: string[]; bars: boolean[] } | null {
-  const clean = line.replace(/\bN\.?C\.?(?=\s|$)/gi, " ").replace(/\|/g, " | ");
-  const toks = clean.split(/[\s.]+/).map((t) => t.replace(/[(),]/g, "")).filter(Boolean);
+function lineChords(line: string): LineChords | null {
+  // Blank "N.C." in place so every other token keeps its column.
+  const clean = line.replace(/\bN\.?C\.?(?=\s|$)/gi, (m) => " ".repeat(m.length));
+  const toks: { t: string; col: number }[] = [];
+  const re = /\||[^\s.|]+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(clean))) { const t = m[0].replace(/[(),]/g, ""); if (t) toks.push({ t, col: m.index }); }
   if (!toks.length) return null;
-  const good = toks.filter(isChordToken).length;
-  const noise = toks.filter((t) => t === "|" || t === "%" || NOISE_RE.test(t)).length;
+  const good = toks.filter(({ t }) => isChordToken(t)).length;
+  const noise = toks.filter(({ t }) => t === "|" || t === "%" || NOISE_RE.test(t)).length;
   if (!good || (good + noise) / toks.length < 0.7) return null;
-  const hasBars = toks.includes("|");
-  const chords: string[] = [], bars: boolean[] = [];
+  const hasBars = toks.some(({ t }) => t === "|");
+  const chords: string[] = [], bars: boolean[] = [], cols: (number | undefined)[] = [];
   let pending = hasBars, times = 1;
-  for (const t of toks) {
+  for (const { t, col } of toks) {
     if (t === "|") { pending = true; continue; }
     if (t === "%") {
       if (!chords.length) continue;
       const from = hasBars ? bars.lastIndexOf(true) : chords.length - 1;
       const n = chords.length;
-      for (let i = Math.max(0, from); i < n; i++) { chords.push(chords[i]); bars.push(i === from); }
+      for (let i = Math.max(0, from); i < n; i++) { chords.push(chords[i]); bars.push(i === from); cols.push(undefined); }
       pending = false;
       continue;
     }
@@ -700,32 +820,98 @@ function lineChords(line: string): { chords: string[]; bars: boolean[] } | null 
     if (!isChordToken(t)) continue;
     chords.push(t);
     bars.push(pending);
+    cols.push(col);
     pending = false;
   }
   if (!chords.length) return null;
   const c = chords.slice(), b = bars.slice();
-  for (let i = 1; i < times; i++) { chords.push(...c); bars.push(...b); }
-  return { chords, bars };
+  for (let i = 1; i < times; i++) { chords.push(...c); bars.push(...b); cols.push(...c.map(() => undefined)); }
+  return { chords, bars, cols };
+}
+
+const INLINE_RE = /\[([A-G][#b]?[^\[\]\s]*)\]/g;
+
+/**
+ * A ChordPro line (`[G]Hello [D]there`) → its chords and the words after each one. Slots are
+ * line-local; `line` is null when no chord has words after it (an instrumental line).
+ */
+function chordProLine(raw: string): { chords: string[]; line: LyricLine | null } | null {
+  const text = raw.trimEnd();
+  const chords: string[] = [], segments: LyricSegment[] = [];
+  let m: RegExpExecArray | null, last = 0;
+  INLINE_RE.lastIndex = 0;
+  while ((m = INLINE_RE.exec(text))) {
+    const before = text.slice(last, m.index);
+    if (chords.length) segments.push({ text: before, slot: chords.length - 1 });
+    else if (before.trim()) segments.push({ text: before });
+    chords.push(m[1]);
+    last = m.index + m[0].length;
+  }
+  if (!chords.length) return null;
+  segments.push({ text: text.slice(last), slot: chords.length - 1 });
+  return { chords, line: segments.some((s) => s.text.trim()) ? { segments } : null };
+}
+
+/**
+ * The words under a chord line: segment i runs from chord i's column to the next chord's; what
+ * comes before the first chord is a leading segment with no slot (dropped when blank). A chord
+ * with no column (added by `%` or `x2`) gets an empty segment.
+ */
+function lyricUnder(cols: (number | undefined)[], lyric: string, offset: number): LyricLine {
+  const segments: LyricSegment[] = [];
+  const first = cols.find((c) => c !== undefined);
+  if (first !== undefined && first > 0) { const lead = lyric.slice(0, first); if (lead.trim()) segments.push({ text: lead }); }
+  cols.forEach((c, i) => {
+    if (c === undefined) { segments.push({ text: "", slot: offset + i }); return; }
+    const next = cols.slice(i + 1).find((x) => x !== undefined);
+    segments.push({ text: lyric.slice(c, next), slot: offset + i });
+  });
+  return { segments };
+}
+
+const isSectionHeader = (line: string) => SECTION_RE.test(line.replace(/\./g, " ").trim());
+
+/** Words: not blank, not chords, not a header or a staff line, and not just `x2` / `----`. */
+function isLyricLine(raw: string): boolean {
+  const line = raw.trim();
+  return !!line && /[a-z]/i.test(line) && !NOISE_RE.test(line.replace(/[()]/g, "")) && !STAFF_RE.test(line)
+    && !isSectionHeader(line) && !chordProLine(raw) && !lineChords(raw);
 }
 
 export function importChart(text: string): RawSection[] {
-  const sections: RawSection[] = [];
-  let cur: RawSection | null = null;
-  const push = (n: string) => { cur = { name: n, chords: [], bars: [] }; sections.push(cur); };
-  const inline = /\[([A-G][#b]?[^\[\]\s]*)\]/g;
-  for (const raw of text.split(/\r?\n/)) {
+  type Building = RawSection & { lyrics: LyricLine[] };
+  const sections: Building[] = [];
+  let cur: Building | null = null;
+  const push = (n: string): Building => { const s: Building = { name: n, chords: [], bars: [], lyrics: [] }; sections.push(s); return s; };
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
     const line = raw.trim();
     if (!line || STAFF_RE.test(line)) continue;
     const sm = line.replace(/\./g, " ").trim().match(SECTION_RE);
-    if (sm) { const n = sm[1][0].toUpperCase() + sm[1].slice(1).toLowerCase(); push(n + (sm[2] ? " " + sm[2] : "")); continue; }
-    const found: string[] = [];
-    let m2: RegExpExecArray | null;
-    inline.lastIndex = 0;
-    while ((m2 = inline.exec(line))) found.push(m2[1]);
-    const got = found.length ? { chords: found, bars: found.map(() => false) } : lineChords(line);
-    if (got) { if (!cur) push("Song"); cur!.chords.push(...got.chords); cur!.bars.push(...got.bars); }
+    if (sm) { const n = sm[1][0].toUpperCase() + sm[1].slice(1).toLowerCase(); cur = push(n + (sm[2] ? " " + sm[2] : "")); continue; }
+    const pro = chordProLine(raw);
+    if (pro) {
+      cur ??= push("Song");
+      const offset = cur.chords.length;
+      cur.chords.push(...pro.chords);
+      cur.bars.push(...pro.chords.map(() => false));
+      if (pro.line) cur.lyrics.push({ segments: pro.line.segments.map((s) => (s.slot === undefined ? s : { ...s, slot: s.slot + offset })) });
+      continue;
+    }
+    const got = lineChords(raw);
+    if (got) {
+      cur ??= push("Song");
+      const offset = cur.chords.length;
+      cur.chords.push(...got.chords);
+      cur.bars.push(...got.bars);
+      const next = lines[i + 1];
+      if (next !== undefined && isLyricLine(next)) { cur.lyrics.push(lyricUnder(got.cols, next.trimEnd(), offset)); i++; }
+      continue;
+    }
+    if (cur && isLyricLine(raw)) cur.lyrics.push({ segments: [{ text: raw.trimEnd() }] });
   }
-  return sections.filter((s) => s.chords.length);
+  return sections.filter((s) => s.chords.length).map(({ lyrics, ...s }) => (hasSlots(lyrics) ? { ...s, lyrics } : s));
 }
 
 export function detectKey(symbols: ParsedSymbol[]): string {
@@ -778,8 +964,32 @@ export function chartToSections(text: string, currentKey: string, opts: { key?: 
   }
   const sections = secs.map((x) => {
     const tokens: string[] = [], bars: boolean[] = [];
-    x.chords.forEach((t, i) => { const n = convert(t); if (n) { tokens.push(n); bars.push(x.bars[i]); } });
-    return sectionFromTokens(x.name, tokens, key, { bars: bars.some(Boolean) ? bars : undefined });
+    const slotMap: (number | undefined)[] = []; // chart chord index → token index (none when dropped)
+    x.chords.forEach((t, i) => {
+      const n = convert(t);
+      slotMap.push(n ? tokens.length : undefined);
+      if (n) { tokens.push(n); bars.push(x.bars[i]); }
+    });
+    return sectionFromTokens(x.name, tokens, key, {
+      bars: bars.some(Boolean) ? bars : undefined,
+      lyrics: x.lyrics?.map((l) => remapLine(l, slotMap)),
+    });
   }).filter((s) => s.phrases.length);
   return { sections, key };
+}
+
+/** Point a line's segments at the surviving chords; words under a dropped chord join the segment before them. */
+function remapLine(line: LyricLine, slotMap: (number | undefined)[]): LyricLine {
+  const segments: LyricSegment[] = [];
+  for (const s of line.segments) {
+    const slot = s.slot === undefined ? undefined : slotMap[s.slot];
+    if (s.slot !== undefined && slot === undefined) {
+      const prev = segments[segments.length - 1];
+      if (prev) prev.text += s.text;
+      else if (s.text.trim()) segments.push({ text: s.text });
+      continue;
+    }
+    segments.push(slot === undefined ? { text: s.text } : { text: s.text, slot });
+  }
+  return { segments };
 }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   detectPhrases, phraseTokens, kBest, candidates, parseProgression, STRATEGIES, solveSection, planPhrase,
-  importChart, chartToSections, sectionTokens, splitPhraseAt, joinPhraseAt, retokenizeSection, Section, Role,
+  importChart, chartToSections, sectionTokens, splitPhraseAt, joinPhraseAt, retokenizeSection, redetectSection,
+  phraseLyrics, lyricText, Section, Role,
 } from "./engine";
 import { ugContentToChart, ugKeyToSongKey } from "./ug-chart";
 import { formatCount, groupResults, popularity, type UgResult } from "./ug-group";
@@ -220,6 +221,18 @@ describe("Ultimate Guitar import", () => {
     expect(secs[3].chords).toEqual(["D", "Esus4", "F#m"]);
   });
 
+  it("keeps the words under the chords, split at the chord columns", () => {
+    const secs = importChart(ugContentToChart(UG_CONTENT));
+    expect(secs[0].lyrics).toBeUndefined(); // the Intro has no words
+    expect(secs[1].lyrics).toEqual([
+      { segments: [{ text: "    Today is g", slot: 0 }, { text: "onna be the day", slot: 1 }] },
+      { segments: [{ text: "That they're g" }, { text: "onna throw it back to y", slot: 2 }, { text: "ou", slot: 3 }] },
+    ]);
+    expect(secs[3].lyrics).toEqual([
+      { segments: [{ text: "And a" }, { text: "ll the roads we h", slot: 0 }, { text: "ave to walk are w", slot: 1 }, { text: "inding", slot: 2 }] },
+    ]);
+  });
+
   it("uses the key UG reports instead of detecting one", () => {
     const chart = ugContentToChart(UG_CONTENT);
     const forced = chartToSections(chart, "G", { key: ugKeyToSongKey("F#m") ?? undefined });
@@ -300,5 +313,97 @@ describe("Ultimate Guitar result grouping", () => {
     expect(formatCount(229)).toBe("229");
     expect(formatCount(2497)).toBe("2.5k");
     expect(formatCount(12000)).toBe("12k");
+  });
+});
+
+describe("lyrics", () => {
+  const verse = [
+    "[Verse]",
+    "G    C",
+    "Hello there",
+    "G    C",
+    "How are you",
+    "la la la",
+    "D Em",
+  ].join("\n");
+
+  it("reads ChordPro words as the text after each chord, with a leading segment", () => {
+    expect(importChart("[G]Hello [D]there [Em]friend")[0].lyrics).toEqual([
+      { segments: [{ text: "Hello ", slot: 0 }, { text: "there ", slot: 1 }, { text: "friend", slot: 2 }] },
+    ]);
+    expect(importChart("Oh [G]hello")[0].lyrics).toEqual([{ segments: [{ text: "Oh " }, { text: "hello", slot: 0 }]}]);
+    expect(importChart("[G] [D]")[0].lyrics).toBeUndefined();
+  });
+
+  it("keeps chordless lines and gives instrumental chord lines no line", () => {
+    const [sec] = importChart(verse);
+    expect(sec.chords).toEqual(["G", "C", "G", "C", "D", "Em"]);
+    expect(sec.lyrics).toEqual([
+      { segments: [{ text: "Hello", slot: 0 }, { text: " there", slot: 1 }] },
+      { segments: [{ text: "How a", slot: 2 }, { text: "re you", slot: 3 }] },
+      { segments: [{ text: "la la la" }] },
+    ]);
+    expect(importChart("[Verse]\nG C\nD Em")[0].lyrics).toBeUndefined();
+    // Words only count when they sit under chords or inside a section.
+    expect(importChart("Just words\n[Verse]\nG C")[0].lyrics).toBeUndefined();
+  });
+
+  it("gives chords added by x2 empty segments", () => {
+    const [sec] = importChart("[Verse]\nG    C  x2\nHello there");
+    expect(sec.chords).toEqual(["G", "C", "G", "C"]);
+    expect(sec.lyrics).toEqual([{ segments: [
+      { text: "Hello", slot: 0 }, { text: " there", slot: 1 }, { text: "", slot: 2 }, { text: "", slot: 3 },
+    ] }]);
+  });
+
+  it("remaps slots when a chord is dropped on conversion, merging its words into the previous segment", () => {
+    const { sections } = chartToSections("[Verse]\nG   1   C\nHello there friend", "C", { key: "G" });
+    expect(sectionTokens(sections[0])).toEqual(["1", "4"]);
+    expect(sections[0].lyrics).toEqual([{ segments: [{ text: "Hello th", slot: 0 }, { text: "ere friend", slot: 1 }] }]);
+  });
+
+  it("cuts phrases at the lyric lines and shares a pattern between repeated lines", () => {
+    const { sections: [sec] } = chartToSections(verse, "C", { key: "G" });
+    expect(sec.phrases.map(phraseTokens)).toEqual([["1", "4"], ["1", "4"], ["5", "6m"]]);
+    expect(sec.phrases.map((p) => p.patternId)).toEqual(["1-4", "1-4", undefined]);
+    expect(sec.phrases.every((p) => p.origin === "detected")).toBe(true);
+    expect(redetectSection(splitPhraseAt(sec, 1), "G")).toEqual(sec);
+  });
+
+  it("keeps lyrics through a same-length retokenize and drops them otherwise", () => {
+    const { sections: [sec] } = chartToSections(verse, "C", { key: "G" });
+    const swapped = retokenizeSection(sec, ["1", "4", "1", "4", "5", "3m"], "G");
+    expect(swapped.lyrics).toEqual(sec.lyrics);
+    expect(swapped.phrases.map(phraseTokens)).toEqual([["1", "4"], ["1", "4"], ["5", "3m"]]);
+    const grown = retokenizeSection(sec, ["1", "4", "5", "6m", "1"], "G");
+    expect(grown.lyrics).toBeUndefined();
+    expect(grown.phrases.map(phraseTokens)).toEqual([["1", "4", "5", "6m", "1"]]);
+  });
+
+  it("lays lines onto phrases, splitting a line at a manual cut and joining it back", () => {
+    const { sections: [sec] } = chartToSections(verse, "C", { key: "G" });
+    expect(phraseLyrics(sec)).toEqual([
+      [{ segments: [{ text: "Hello", slot: 0 }, { text: " there", slot: 1 }] }],
+      [{ segments: [{ text: "How a", slot: 2 }, { text: "re you", slot: 3 }] }, { segments: [{ text: "la la la" }] }],
+      [{ segments: [{ text: "", slot: 4 }, { text: "", slot: 5 }] }],
+    ]);
+    const split = splitPhraseAt(sec, 1);
+    expect(split.lyrics).toBe(sec.lyrics);
+    expect(split.phrases.map(phraseTokens)).toEqual([["1"], ["4"], ["1", "4"], ["5", "6m"]]);
+    expect(phraseLyrics(split).slice(0, 2)).toEqual([
+      [{ segments: [{ text: "Hello", slot: 0 }] }],
+      [{ segments: [{ text: " there", slot: 1 }] }],
+    ]);
+    expect(phraseLyrics(joinPhraseAt(split, 1))[0]).toEqual(phraseLyrics(sec)[0]);
+    expect(lyricText(phraseLyrics(sec)[1])).toBe("How are you la la la");
+    expect(lyricText(phraseLyrics(sec)[2])).toBe("");
+  });
+
+  it("gives sections without lyrics one wordless line per phrase", () => {
+    const sec: Section = { name: "Song", phrases: detectPhrases(toks("1 5 6m 4 1 5 6m 4"), "G") };
+    expect(phraseLyrics(sec)).toEqual([
+      [{ segments: [0, 1, 2, 3].map((slot) => ({ text: "", slot })) }],
+      [{ segments: [4, 5, 6, 7].map((slot) => ({ text: "", slot })) }],
+    ]);
   });
 });

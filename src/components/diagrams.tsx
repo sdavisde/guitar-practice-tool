@@ -57,10 +57,12 @@ export const SET_STRINGS: Record<SetId, number[]> = {
 const STRING_NAMES = ["e", "B", "G", "D", "A", "E"]; // string 1 → 6, top to bottom
 const INLAYS = [3, 5, 7, 9, 12, 15];
 
-export function FretMap({ path }: { path: Cand[] }) {
-  const W = 920, left = 52, right = 16, top = 16, rowH = 25;
+/** The neck up to `maxFret` (default: the whole 15 frets); frets keep their width, the map just ends sooner. */
+export function FretMap({ path, maxFret = MAX_FRET }: { path: Cand[]; maxFret?: number }) {
+  const left = 52, right = 16, top = 16, rowH = 25;
   const H = top + 5 * rowH + 26;
-  const fw = (W - left - right) / MAX_FRET;
+  const fw = (920 - left - right) / MAX_FRET;
+  const W = left + maxFret * fw + right;
   const sy = (s: number) => top + (s - 1) * rowH;
   const fx = (f: number) => (f === 0 ? left - 18 : left + (f - 0.5) * fw);
   const boardTop = sy(1), boardBot = sy(6), midY = (boardTop + boardBot) / 2;
@@ -80,7 +82,7 @@ export function FretMap({ path }: { path: Cand[] }) {
       role="img"
       aria-label={`Fretboard map showing where ${path.map((c) => c.chord.label).join(", ")} sit on the neck, with each chord's root note marked`}
     >
-      {INLAYS.map((f) => (
+      {INLAYS.filter((f) => f <= maxFret).map((f) => (
         <g key={`in${f}`} opacity={0.5}>
           {f === 12 ? (
             <>
@@ -92,7 +94,7 @@ export function FretMap({ path }: { path: Cand[] }) {
           )}
         </g>
       ))}
-      {Array.from({ length: MAX_FRET + 1 }, (_, f) => (
+      {Array.from({ length: maxFret + 1 }, (_, f) => (
         <line key={`w${f}`} x1={left + f * fw} y1={boardTop} x2={left + f * fw} y2={boardBot}
           stroke={f === 0 ? "var(--neck-ink)" : "var(--neck-line)"} strokeWidth={f === 0 ? 3 : 0.8} />
       ))}
@@ -102,7 +104,7 @@ export function FretMap({ path }: { path: Cand[] }) {
           <text x={left - 34} y={sy(i + 1) + 3.5} fontSize={10} fill="var(--neck-muted)" textAnchor="end">{nm}</text>
         </g>
       ))}
-      {Array.from({ length: MAX_FRET }, (_, i) => (
+      {Array.from({ length: maxFret }, (_, i) => (
         <text key={`n${i}`} x={fx(i + 1)} y={H - 6} fontSize={10} fill="var(--neck-muted)" textAnchor="middle">{i + 1}</text>
       ))}
       {shapes.map(({ c, notes }, i) => (

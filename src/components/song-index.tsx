@@ -5,7 +5,7 @@ import type { Notation } from "@/lib/use-song";
 import { FAM_COLOR } from "@/components/diagrams";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/label";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { NotationToggle } from "@/components/notation-toggle";
 import { Button } from "@/components/ui/button";
 import { ShuffleIcon } from "@/components/icons";
 
@@ -18,11 +18,6 @@ type Props = {
   onRandomize: () => void;
 };
 
-const NOTATIONS: { value: Notation; label: string }[] = [
-  { value: "numbers", label: "Numbers" },
-  { value: "names", label: "Names" },
-];
-
 /** The chart at a glance: one row per section, with the progression editable in place. */
 export function SongIndex({ sections, songKey, notation, onChangeNotation, onChangeTokens, onRandomize }: Props) {
   return (
@@ -33,23 +28,7 @@ export function SongIndex({ sections, songKey, notation, onChangeNotation, onCha
           <ShuffleIcon /> Randomize
         </Button>
         <Label>Show as</Label>
-        <ToggleGroup
-          type="single"
-          value={notation}
-          onValueChange={(v) => v && onChangeNotation(v as Notation)}
-          aria-label="Chord notation"
-          className="gap-1"
-        >
-          {NOTATIONS.map((n) => (
-            <ToggleGroupItem
-              key={n.value}
-              value={n.value}
-              className="h-[26px] rounded-[6px] border border-border px-2.5 text-[12px] font-normal text-text-secondary hover:bg-card hover:text-foreground data-[state=on]:border-foreground data-[state=on]:bg-foreground data-[state=on]:font-semibold data-[state=on]:text-background"
-            >
-              {n.label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+        <NotationToggle value={notation} onChange={onChangeNotation} />
       </div>
 
       <div className="flex flex-col border-t border-foreground">
