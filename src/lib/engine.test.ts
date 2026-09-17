@@ -11,6 +11,34 @@ const toks = (s: string) => s.split(/\s+/).filter(Boolean);
 const shape = (phrases: ReturnType<typeof detectPhrases>) =>
   phrases.map((p) => p.slots.map((s) => (s.role === "passing" ? `(${s.token})` : s.token)).join(" "));
 
+describe("parseProgression chromatic degrees", () => {
+  it("reads b7, b6, b3 and #4 as major chords on the altered degree", () => {
+    const { chords, errors } = parseProgression("1 b7 4 b6 b3 #4", "G");
+    expect(errors).toEqual([]);
+    expect(chords.map((c) => c.name)).toEqual(["G", "F", "C", "D#", "A#", "C#"]);
+    expect(chords.map((c) => c.degree)).toEqual(["1", "b7", "4", "b6", "b3", "#4"]);
+    expect(chords.map((c) => c.label)).toEqual(["1", "b7", "4", "b6", "b3", "#4"]);
+    expect(chords.every((c) => c.q === "maj")).toBe(true);
+  });
+
+  it("takes a suffix and a slash bass on an altered degree, and spells flat keys flat", () => {
+    const { chords } = parseProgression("b7sus4 b7/1 b3m", "F");
+    expect(chords.map((c) => c.name)).toEqual(["Ebsus4", "Eb/F", "Abm"]);
+    expect(chords.map((c) => c.label)).toEqual(["b7sus4", "b7/1", "b3m"]);
+    expect(chords.map((c) => c.degree)).toEqual(["b7sus4", "b7/1", "b3m"]);
+  });
+
+  it("counts altered degrees as number tokens, so a number chart stays a number chart", () => {
+    const { sections, key } = chartToSections("[Verse]\n1 b7 4 1\n[Chorus]\n4 5 1 b7", "A");
+    expect(key).toBe("A");
+    expect(sections.map((s) => sectionTokens(s))).toEqual([["1", "b7", "4", "1"], ["4", "5", "1", "b7"]]);
+  });
+
+  it("still rejects junk", () => {
+    expect(parseProgression("b8 #x bb7 h7", "C").errors).toEqual(["b8", "#x", "bb7", "h7"]);
+  });
+});
+
 describe("detectPhrases", () => {
   it("cuts an exact 3x repeat into three phrases sharing a pattern", () => {
     const ph = detectPhrases(toks("4 5 6m 1 4 5 6m 1 4 5 6m 1"), "G");

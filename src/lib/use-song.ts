@@ -4,7 +4,7 @@ import {
   Section, Phrase, Slot, RepeatMode, LyricLine, LyricSegment, chartToSections, sectionFromTokens, plainPhrase,
   splitPhraseAt, joinPhraseAt, redetectSection, retokenizeSection,
 } from "@/lib/engine";
-import { randomKey, randomProgression } from "@/lib/random-progression";
+import { DEFAULT_MOOD, MoodId, MOODS, moodById, randomKey, randomProgression, randomSong } from "@/lib/random-progression";
 
 export type Notation = "numbers" | "names";
 
@@ -13,7 +13,7 @@ const DEFAULT_PROGRESSION = "1 5 6m 4";
 
 const STORAGE_KEY = "triad-paths:song";
 
-export type SongSource = "ultimate-guitar" | "paste";
+export type SongSource = "ultimate-guitar" | "paste" | "random";
 
 /** Where an imported chart came from and what it's called. All optional: typed progressions have none. */
 export type SongMeta = {
@@ -32,6 +32,8 @@ type StoredSong = {
   sections: Section[];
   /** Added after v2 shipped; older v2 payloads simply lack it. */
   meta?: SongMeta;
+  /** The mood the Randomize buttons use; added after v2 shipped too. */
+  mood?: MoodId;
 };
 
 const isRecord = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
@@ -65,6 +67,7 @@ function isSection(x: unknown): x is Section {
 }
 
 const isNotation = (x: unknown): x is Notation => x === "numbers" || x === "names";
+const isMood = (x: unknown): x is MoodId => MOODS.some((m) => m.id === x);
 
 function readMeta(x: unknown): SongMeta | undefined {
   if (!isRecord(x)) return undefined;
@@ -72,7 +75,7 @@ function readMeta(x: unknown): SongMeta | undefined {
   if (typeof x.title === "string") meta.title = x.title;
   if (typeof x.artist === "string") meta.artist = x.artist;
   if (typeof x.capo === "number" && Number.isInteger(x.capo)) meta.capo = x.capo;
-  if (x.source === "ultimate-guitar" || x.source === "paste") meta.source = x.source;
+  if (x.source === "ultimate-guitar" || x.source === "paste" || x.source === "random") meta.source = x.source;
   return Object.keys(meta).length ? meta : undefined;
 }
 
@@ -115,7 +118,9 @@ function loadStoredSong(): StoredSong | null {
     ) {
       const song = { v: 2, songKey: data.songKey, notation: data.notation, imported: data.imported, sections: data.sections } as StoredSong;
       const meta = readMeta(data.meta);
-      return meta ? { ...song, meta } : song;
+      if (meta) song.meta = meta;
+      if (isMood(data.mood)) song.mood = data.mood;
+      return song;
     }
   } catch {
     // ignore (parse error, storage disabled, etc.)
@@ -140,6 +145,7 @@ export function useSong() {
   const [imported, setImported] = useState(false);
   const [meta, setMeta] = useState<SongMeta>({});
   const [notation, setNotation] = useState<Notation>("numbers");
+  const [mood, setMood] = useState<MoodId>(DEFAULT_MOOD);
   /** True once localStorage has been read, so a page can hold off showing the default song. */
   const [ready, setReady] = useState(false);
   const hydrated = useRef(false);
@@ -153,6 +159,7 @@ export function useSong() {
       setImported(stored.imported);
       setMeta(stored.meta ?? {});
       setNotation(stored.notation);
+      setMood(stored.mood ?? DEFAULT_MOOD);
     }
     setReady(true);
   }, []);
@@ -164,11 +171,12 @@ export function useSong() {
     try {
       const payload: StoredSong = { v: 2, songKey, notation, imported, sections };
       if (Object.keys(meta).length) payload.meta = meta;
+      if (mood !== DEFAULT_MOOD) payload.mood = mood;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
       // ignore (quota, private mode, storage disabled, etc.)
     }
-  }, [songKey, notation, imported, sections, meta]);
+  }, [songKey, notation, imported, sections, meta, mood]);
 
   const patch = useCallback((index: number, fn: (s: Section) => Section) => {
     setSections((prev) => prev.map((s, i) => (i === index ? fn(s) : s)));
@@ -230,14 +238,23 @@ export function useSong() {
     return null;
   }, [songKey]);
 
-  /** Start over with a fresh diatonic progression in a new random key. */
+  /** Start over with a fresh loop in the current mood, in a new random key. */
   const randomizeSong = useCallback(() => {
     const key = randomKey(songKey);
     setSongKey(key);
-    setSections([sectionFromTokens("Song", randomProgression(), key)]);
+    setSections([sectionFromTokens("Song", randomProgression(Math.random, { mood }), key)]);
     setImported(false);
     setMeta({});
-  }, [songKey]);
+  }, [songKey, mood]);
+
+  /** Start over with a made-up song in the current mood: verse, chorus and friends, each with its own movement. */
+  const randomizeFullSong = useCallback(() => {
+    const key = randomKey(songKey);
+    setSongKey(key);
+    setSections(randomSong(mood).map((s) => sectionFromTokens(s.name, s.tokens, key, { strategyId: s.strategyId })));
+    setImported(true);
+    setMeta({ title: `Random ${moodById(mood).name.toLowerCase()} song`, source: "random" });
+  }, [songKey, mood]);
 
   const clearSong = useCallback(() => {
     setSections(defaultSections(songKey));
@@ -253,6 +270,6 @@ export function useSong() {
   return {
     ready, songKey, setSongKey, sections, imported, meta, updateSection,
     splitPhrase, joinPhrase, redetect, setSectionStrategy, setPhraseStrategy, setRepeat,
-    importChart, randomizeSong, clearSong, notation, setNotation,
+    importChart, randomizeSong, randomizeFullSong, mood, setMood, clearSong, notation, setNotation,
   };
 }

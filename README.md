@@ -24,11 +24,22 @@ The page is pre-rendered, but the app is no longer a static export: the Ultimate
 ## Structure
 - `src/lib/engine.ts` — chords, voicings, path strategies, phrase detection, chart import (pure logic, no UI)
 - `src/lib/engine.test.ts` — tests for detection, the path search, and import
+- `src/lib/random-progression.ts` — the Randomize buttons: mood profiles (which chords, how they move) and section
+  profiles (where a verse, pre-chorus, chorus or bridge opens and ends), plus `randomSong` to string them together
 - `src/lib/use-song.ts` — song state: sections, phrases, persistence (localStorage, v2 with a v1 migration)
 - `src/components/diagrams.tsx` — chord diagram + fretboard map SVGs
 - `src/components/section-sheet.tsx` — one song section: movement chips, repeat mode, one path per phrase
 - `src/components/ui/` — shadcn-style primitives (Button, Dialog, ToggleGroup, ...)
 - `src/app/page.tsx` — key picker, progression input, chart import, section list
+
+## Progressions
+Type Nashville numbers (`1 5 6m 4`, `2m7`, `5/7`) or chord names (`G D Em C`). Chromatic degrees are written with
+the accidental first and are major unless a suffix says otherwise: `b7`, `b6`, `b3`, `#4`, `4m`, `b7sus4`.
+Secondary dominants are the major chord on a minor degree: `2M`, `3M`, `6M` (or `27`, `37`, `67` as sevenths).
+
+**Randomize** rolls one loop in the chosen mood (pop, folk, worship, rock, soul, dark) in a random key; **Random
+song** rolls a verse, a chorus, and often a pre-chorus and a bridge, each shaped by its role (a pre-chorus leaves
+home and ends on a cadence, a chorus opens on home or the 4) and played with a matching movement.
 
 ## The phrase model
 A **section** (verse, chorus, ...) holds **phrases**; each phrase holds **slots**, one per chord token.

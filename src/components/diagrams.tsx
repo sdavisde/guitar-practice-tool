@@ -42,7 +42,7 @@ export function ChordDiagram({ cand, names }: { cand: Cand; names: string[] }) {
 }
 
 function neckShort(c: Cand): string {
-  const m = c.chord.label.match(/^([1-7]|[A-G][#b]?)/);
+  const m = c.chord.label.match(/^([#b]?[1-7]|[A-G][#b]?)/);
   const base = m ? m[1] : c.chord.label;
   const f = QUAL[c.chord.q].fam;
   return base + (f === "min" ? "m" : f === "dim" ? "°" : "");
