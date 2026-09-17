@@ -4,8 +4,8 @@ import Link from "next/link";
 import { EllipsisIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger,
+} from "@/components/ui/dialog";
 import { ChartDialog } from "@/components/chart-dialog";
 import { UgSearchDialog } from "@/components/ug-search-dialog";
 import { PrinterIcon } from "@/components/icons";
@@ -24,9 +24,10 @@ function printPage() {
 }
 
 export function SiteHeader({ meta, onImport, onClear }: Props) {
-  // One shared slot so each dialog is rendered exactly once, outside the dropdown
-  // (a dialog mounted inside a menu item would unmount the moment the menu closes).
+  // One shared slot so each dialog is rendered exactly once, outside the action sheet
+  // (a dialog mounted inside the sheet would unmount the moment the sheet closes).
   const [dialog, setDialog] = useState<"search" | "chart" | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <header className="flex min-h-[60px] flex-wrap items-center justify-between gap-2 border-b border-border py-2">
@@ -53,26 +54,66 @@ export function SiteHeader({ meta, onImport, onClear }: Props) {
         <Button className="h-[34px] px-3.5 text-[13px]" asChild>
           <Link href="/play">Practice</Link>
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
+          <DialogTrigger asChild>
             <Button variant="outline" size="icon" aria-label="More" className="size-[34px] shrink-0">
               <EllipsisIcon />
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => setDialog("search")}>Search Ultimate Guitar</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setDialog("chart")}>Edit chart</DropdownMenuItem>
-            <DropdownMenuItem onSelect={printPage}>
-              <PrinterIcon /> Print
-            </DropdownMenuItem>
-            {onClear && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onSelect={() => onClear()}>Clear song</DropdownMenuItem>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </DialogTrigger>
+          <DialogContent
+            showCloseButton={false}
+            className="top-auto bottom-0 max-w-full translate-y-0 rounded-t-xl rounded-b-none px-2 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] sm:max-w-full"
+          >
+            <DialogHeader className="px-2">
+              <DialogTitle>Song</DialogTitle>
+              <DialogDescription className="sr-only">Song actions</DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col">
+              <Button
+                variant="ghost"
+                className="h-11 justify-start px-3 text-[15px] font-normal"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setDialog("search");
+                }}
+              >
+                Search Ultimate Guitar
+              </Button>
+              <Button
+                variant="ghost"
+                className="h-11 justify-start px-3 text-[15px] font-normal"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setDialog("chart");
+                }}
+              >
+                Edit chart
+              </Button>
+              <Button
+                variant="ghost"
+                className="h-11 justify-start px-3 text-[15px] font-normal"
+                onClick={() => {
+                  setMenuOpen(false);
+                  printPage();
+                }}
+              >
+                <PrinterIcon /> Print
+              </Button>
+              {onClear && (
+                <Button
+                  variant="ghost"
+                  className="mt-1 h-11 justify-start border-t border-border px-3 pt-1 text-[15px] font-normal"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onClear();
+                  }}
+                >
+                  Clear song
+                </Button>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <UgSearchDialog
