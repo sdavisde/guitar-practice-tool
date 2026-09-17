@@ -6,11 +6,23 @@ import {
   Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 
-type Props = { trigger: React.ReactNode; onImport: (chart: string) => string | null };
+type Props = {
+  /** Optional inline trigger. Omit it and drive the dialog with `open`/`onOpenChange` instead. */
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onImport: (chart: string) => string | null;
+};
 
 /** Paste-a-chart dialog. `onImport` returns an error message, or null on success. */
-export function ChartDialog({ trigger, onImport }: Props) {
-  const [open, setOpen] = useState(false);
+export function ChartDialog({ trigger, open: openProp, onOpenChange, onImport }: Props) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = openProp ?? uncontrolledOpen;
+
+  function setOpen(next: boolean) {
+    if (openProp === undefined) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  }
   const [chart, setChart] = useState("");
   const [error, setError] = useState("");
 
@@ -22,7 +34,7 @@ export function ChartDialog({ trigger, onImport }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Paste a chord chart</DialogTitle>

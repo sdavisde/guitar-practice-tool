@@ -14,7 +14,10 @@ type SearchPage = { query: string; total: number; page: number; pages: number; r
 type Tab = { songName: string; artistName: string; key: string | null; capo: number | null; content: string };
 
 type Props = {
-  trigger: React.ReactNode;
+  /** Optional inline trigger. Omit it and drive the dialog with `open`/`onOpenChange` instead. */
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   onImport: (chart: string, info?: SongMeta & { key?: string }) => string | null;
 };
 
@@ -26,8 +29,14 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 /** Search Ultimate Guitar by artist/title and import a chord sheet. `onImport` returns an error message, or null. */
-export function UgSearchDialog({ trigger, onImport }: Props) {
-  const [open, setOpen] = useState(false);
+export function UgSearchDialog({ trigger, open: openProp, onOpenChange, onImport }: Props) {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = openProp ?? uncontrolledOpen;
+
+  function setOpen(next: boolean) {
+    if (openProp === undefined) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  }
   const [query, setQuery] = useState("");
   const [page, setPage] = useState<SearchPage | null>(null);
   const [results, setResults] = useState<UgResult[]>([]);
@@ -83,7 +92,7 @@ export function UgSearchDialog({ trigger, onImport }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
       <DialogContent className="flex max-h-[85dvh] flex-col gap-0 p-0 sm:max-w-2xl">
         <div className="flex flex-col gap-3 px-4 pt-4 pb-3">
           <DialogHeader>
