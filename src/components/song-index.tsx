@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/label";
 import { NotationToggle } from "@/components/notation-toggle";
 import { Button } from "@/components/ui/button";
-import { ShuffleIcon } from "@/components/icons";
+import { DiceIcon, ShuffleIcon } from "@/components/icons";
+import { MoodSelect } from "@/components/mood-select";
+import type { MoodId } from "@/lib/random-progression";
 
 type Props = {
   sections: Section[];
@@ -15,18 +17,31 @@ type Props = {
   notation: Notation;
   onChangeNotation: (notation: Notation) => void;
   onChangeTokens: (index: number, progression: string) => void;
+  /** The mood the random buttons draw from. */
+  mood: MoodId;
+  onChangeMood: (mood: MoodId) => void;
+  /** One loop in the mood, in a random key. */
   onRandomize: () => void;
+  /** A verse, chorus and more in the mood. */
+  onRandomSong: () => void;
 };
 
+const small = "h-[26px] rounded-[6px] px-2.5 text-[12px] [&_svg:not([class*='size-'])]:size-3.5";
+
 /** The chart at a glance: one row per section, with the progression editable in place. */
-export function SongIndex({ sections, songKey, notation, onChangeNotation, onChangeTokens, onRandomize }: Props) {
+export function SongIndex({ sections, songKey, notation, onChangeNotation, onChangeTokens, mood, onChangeMood, onRandomize, onRandomSong }: Props) {
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-2.5 pb-2">
-        <Button variant="outline" onClick={onRandomize} title="New random progression in a random key"
-          className="mr-auto h-[26px] rounded-[6px] px-2.5 text-[12px] [&_svg:not([class*='size-'])]:size-3.5">
-          <ShuffleIcon /> Randomize
-        </Button>
+      <div className="flex flex-wrap items-center gap-2.5 pb-2">
+        <div className="mr-auto flex flex-wrap items-center gap-2">
+          <MoodSelect value={mood} onChange={onChangeMood} />
+          <Button variant="outline" onClick={onRandomize} title="A new loop in this mood, in a random key" className={small}>
+            <ShuffleIcon /> Randomize
+          </Button>
+          <Button variant="outline" onClick={onRandomSong} title="A made-up song in this mood: verse, chorus and more, each played its own way" className={small}>
+            <DiceIcon /> Random song
+          </Button>
+        </div>
         <Label>Show as</Label>
         <NotationToggle value={notation} onChange={onChangeNotation} />
       </div>

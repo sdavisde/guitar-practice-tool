@@ -91,10 +91,13 @@ export function parseChordSymbol(tok: string): ParsedSymbol | null {
   };
 }
 
+/** Degree tokens: "1", "6m", "5/7", and chromatic degrees "b7", "b6", "#4" (assumed major, as borrowed chords usually are). */
+const DEGREE_RE = /^([#b]?)([1-7])(.*)$/;
+
 export function isNumToken(t: string): boolean {
   const base = t.replace(/\/[1-7]$/, "");
-  const m = base.match(/^([1-7])(.*)$/);
-  return !!(m && normSuffix(m[2]).ok);
+  const m = base.match(DEGREE_RE);
+  return !!(m && normSuffix(m[3]).ok);
 }
 
 function withBass(c: Chord, bass: number | undefined): Chord {
@@ -116,15 +119,17 @@ export function parseProgression(text: string, key: string): { chords: Chord[]; 
   for (const tok of toks) {
     const slash = tok.match(/\/([1-7])$/);
     const base = slash ? tok.slice(0, -2) : tok;
-    const m = base.match(/^([1-7])(.*)$/);
-    const ns = m ? normSuffix(m[2]) : { ok: false, q: null };
+    const m = base.match(DEGREE_RE);
+    const ns = m ? normSuffix(m[3]) : { ok: false, q: null };
     if (m && ns.ok) {
-      const d = +m[1];
-      const q = ns.q ?? DIATONIC[d];
-      const root = (ks + DEG_SEMI[d]) % 12;
+      const d = +m[2];
+      const acc = m[1] === "#" ? 1 : m[1] === "b" ? -1 : 0;
+      const implied: Quality = acc ? "maj" : DIATONIC[d];
+      const q = ns.q ?? implied;
+      const root = (ks + DEG_SEMI[d] + acc + 12) % 12;
       chords.push(withBass({
         root, q,
-        label: m[1] + (q === DIATONIC[d] && !m[2] ? "" : QUAL[q].disp || "M") + (slash ? slash[0] : ""),
+        label: m[1] + m[2] + (q === implied && !m[3] ? "" : QUAL[q].disp || "M") + (slash ? slash[0] : ""),
         name: "", degree: degreeLabel(root, q, ks), literal: false,
       }, slash ? (ks + DEG_SEMI[+slash[1]]) % 12 : undefined));
     } else {

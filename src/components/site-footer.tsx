@@ -12,7 +12,7 @@ export function SiteFooter() {
           </span>
         ))}
       </div>
-      <span className="text-[12px] text-muted-foreground">Suffixes: m, M, °, sus2, sus4, 7, maj7, m7 · ringed dot is the root</span>
+      <span className="text-[12px] text-muted-foreground">Suffixes: m, M, °, sus2, sus4, 7, maj7, m7 · borrowed degrees: b7, b6, b3, 4m · ringed dot is the root</span>
     </footer>
   );
 }

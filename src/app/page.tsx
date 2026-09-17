@@ -16,7 +16,8 @@ export default function Home() {
       <div className="grid grid-cols-1 gap-6 pt-8 pb-7 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-10 [&>*]:min-w-0">
         <KeyPicker value={song.songKey} onChange={song.setSongKey} />
         <SongIndex sections={song.sections} songKey={song.songKey} notation={song.notation}
-          onChangeNotation={song.setNotation} onChangeTokens={song.updateSection} onRandomize={song.randomizeSong} />
+          onChangeNotation={song.setNotation} onChangeTokens={song.updateSection}
+          mood={song.mood} onChangeMood={song.setMood} onRandomize={song.randomizeSong} onRandomSong={song.randomizeFullSong} />
       </div>
 
       <main>
