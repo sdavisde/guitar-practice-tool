@@ -15,10 +15,12 @@ type Props = {
   notation: Notation;
   selected: Position | null;
   onSelect: (pos: Position) => void;
+  /** Room to leave under a line when scrolling it into view, e.g. the height of a dock pinned over the sheet. */
+  scrollMarginBottom?: number;
 };
 
 /** The whole song as chords over words, one block per section; click a phrase to play it. */
-export function PlaySheet({ sections, songKey, notation, selected, onSelect }: Props) {
+export function PlaySheet({ sections, songKey, notation, selected, onSelect, scrollMarginBottom }: Props) {
   // Keep the selected phrase on screen when the keyboard moves it.
   useEffect(() => {
     if (selected) document.getElementById(phraseElementId(selected))?.scrollIntoView({ block: "nearest" });
@@ -35,6 +37,7 @@ export function PlaySheet({ sections, songKey, notation, selected, onSelect }: P
           notation={notation}
           selectedPhrase={selected?.section === s ? selected.phrase : -1}
           onSelect={(phrase) => onSelect({ section: s, phrase })}
+          scrollMarginBottom={scrollMarginBottom}
         />
       ))}
     </div>
@@ -48,9 +51,10 @@ type SectionProps = {
   notation: Notation;
   selectedPhrase: number;
   onSelect: (phrase: number) => void;
+  scrollMarginBottom?: number;
 };
 
-function SheetSection({ section, index, songKey, notation, selectedPhrase, onSelect }: SectionProps) {
+function SheetSection({ section, index, songKey, notation, selectedPhrase, onSelect, scrollMarginBottom }: SectionProps) {
   const tokens = useMemo(() => sectionTokens(section), [section]);
   // One chord per slot (undefined where the token isn't a chord), spelled in the section's context.
   const chords = useMemo(() => {
@@ -81,6 +85,7 @@ function SheetSection({ section, index, songKey, notation, selectedPhrase, onSel
             notation={notation}
             selected={p === selectedPhrase}
             onSelect={() => onSelect(p)}
+            scrollMarginBottom={scrollMarginBottom}
           />
         ))}
       </div>
@@ -96,15 +101,17 @@ type PhraseProps = {
   notation: Notation;
   selected: boolean;
   onSelect: () => void;
+  scrollMarginBottom?: number;
 };
 
-function SheetPhrase({ id, lines, tokens, chords, notation, selected, onSelect }: PhraseProps) {
+function SheetPhrase({ id, lines, tokens, chords, notation, selected, onSelect, scrollMarginBottom }: PhraseProps) {
   return (
     <button
       type="button"
       id={id}
       aria-pressed={selected}
       onClick={onSelect}
+      style={selected && scrollMarginBottom !== undefined ? { scrollMarginBottom } : undefined}
       className={cn(
         "-mx-2.5 flex w-[calc(100%+20px)] scroll-mt-4 flex-col items-start gap-1 rounded-lg px-2.5 py-1.5 text-left outline-none",
         "transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detectPhrases, Section } from "./engine";
-import { clampPosition, playablePositions, stepPhrase, stepSection } from "./play-navigation";
+import { clampPosition, playablePositions, stepPhrase, stepSection, swipeDirection } from "./play-navigation";
 
 const toks = (s: string) => s.split(/\s+/).filter(Boolean);
 const sec = (name: string, text: string): Section => ({ name, phrases: detectPhrases(toks(text), "G") });
@@ -35,5 +35,15 @@ describe("play navigation", () => {
     expect(clampPosition(song, { section: 0, phrase: 5 })).toEqual({ section: 0, phrase: 1 });
     expect(clampPosition(song, { section: 1, phrase: 0 })).toEqual({ section: 0, phrase: 1 });
     expect(clampPosition([sec("Empty", "")], { section: 0, phrase: 0 })).toBeNull();
+  });
+
+  it("reads a long, mostly horizontal swipe as a step (left = next, right = previous)", () => {
+    expect(swipeDirection(-60, 10)).toBe(1);
+    expect(swipeDirection(60, -10)).toBe(-1);
+    expect(swipeDirection(-48, 0)).toBe(1);
+    expect(swipeDirection(-47, 0)).toBe(0);
+    expect(swipeDirection(-60, 70)).toBe(0);
+    expect(swipeDirection(-60, -60)).toBe(0);
+    expect(swipeDirection(0, 0)).toBe(0);
   });
 });

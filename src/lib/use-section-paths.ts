@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { Section, PhrasePlan, PhraseResult, PhraseUnit, planPhrase, solveSection, WANDER_ID } from "@/lib/engine";
+import { Cand, Section, Phrase, PhrasePlan, PhraseResult, PhraseUnit, MAX_FRET, lyricText, phraseLyrics, planPhrase, solveSection, WANDER_ID } from "@/lib/engine";
 import type { Notation } from "@/lib/use-song";
 
 /** How many alternatives the solver keeps per phrase; "Re-roll" cycles through them. */
@@ -31,6 +31,35 @@ export interface SectionPaths {
 export function unitLabel(u: Pick<PhraseUnit, "chord" | "role">, notation: Notation): string {
   const t = notation === "numbers" ? u.chord.degree : u.chord.name;
   return u.role === "passing" ? `(${t})` : t;
+}
+
+/** One phrase as the Now playing panel shows it: its words (or chord run), its path and how much neck to draw. */
+export interface PhraseView {
+  phrase: Phrase | undefined;
+  units: PhraseUnit[];
+  path: Cand[] | null;
+  /** Why there is no path, when there is none. */
+  fail: string | undefined;
+  /** The chord run, e.g. "1 · 5 · (2m)". */
+  run: string;
+  /** The phrase's lyrics as one line; empty when it has none. */
+  words: string;
+  /** The last fret the cropped neck shows. */
+  maxFret: number;
+}
+
+/** Everything the panel and the dock show for phrase `phraseIndex` of `section`, given its solved `paths`. */
+export function phraseView(section: Section, phraseIndex: number, paths: Pick<SectionPaths, "plans" | "results">, notation: Notation): PhraseView {
+  const units = paths.plans[phraseIndex]?.units ?? [];
+  const { path = null, fail } = paths.results[phraseIndex] ?? {};
+  const maxUsed = path ? Math.max(0, ...path.flatMap((c) => c.frets)) : 0;
+  return {
+    phrase: section.phrases[phraseIndex],
+    units, path, fail,
+    run: units.map((u) => unitLabel(u, notation)).join(" · "),
+    words: lyricText(phraseLyrics(section)[phraseIndex] ?? []),
+    maxFret: Math.min(MAX_FRET, Math.max(5, maxUsed + 2)),
+  };
 }
 
 /** Pure half of the hook: everything the sheet needs to draw a section's paths for one `alt`. */

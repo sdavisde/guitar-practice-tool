@@ -39,3 +39,15 @@ export function stepSection(sections: Section[], pos: Position, dir: 1 | -1): Po
   }
   return pos;
 }
+
+/** A touch has to travel this far sideways to count as a swipe. */
+export const SWIPE_MIN = 48;
+
+/**
+ * What a swipe of (`dx`, `dy`) pixels means: 1 for the next phrase (a swipe to the left), -1 for the
+ * previous one (to the right), 0 when it is too short or more vertical than horizontal.
+ */
+export function swipeDirection(dx: number, dy: number): 1 | -1 | 0 {
+  if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) <= Math.abs(dy)) return 0;
+  return dx < 0 ? 1 : -1;
+}
