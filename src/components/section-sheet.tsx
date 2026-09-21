@@ -2,9 +2,7 @@
 import { useState } from "react";
 import { Section, RepeatMode, noteNames, hasManual, DEFAULT_STRATEGY } from "@/lib/engine";
 import { useSectionPaths, unitLabel } from "@/lib/use-section-paths";
-import { FretMap } from "@/components/diagrams";
 import { ChordRow } from "@/components/chord-row";
-import { NeckPlate } from "@/components/neck-plate";
 import { MovementChips, MOVEMENTS } from "@/components/movement-chips";
 import { RepeatToggle } from "@/components/repeat-toggle";
 import { RerollButton } from "@/components/reroll-button";
@@ -113,9 +111,9 @@ export function SectionSheet({ section, songKey, index, notation, onSplit, onJoi
                 <p className="max-w-[60ch] py-1 text-sm text-text-secondary">{fail ?? "No path found for this phrase."}</p>
               ) : (
                 <>
-                  <NeckPlate label={`${fig} · ${section.name}, ${movementName(strategyId)}`}>
-                    <FretMap path={path} />
-                  </NeckPlate>
+                  {/* No neck here: the one above the song carries the fretboard now. With several
+                      phrases the row above already names the phrase and its movement. */}
+                  {!multi && <Label>{`${fig} · ${section.name}, ${movementName(strategyId)}`}</Label>}
                   <ChordRow path={path} units={units} names={names} notation={notation} onSplit={(i) => onSplit(offsets[p] + units[i].slot)} />
                 </>
               )}

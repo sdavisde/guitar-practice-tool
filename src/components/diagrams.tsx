@@ -33,7 +33,7 @@ export function ChordDiagram({ cand, names }: { cand: Cand; names: string[] }) {
           <g key={i}>
             <circle cx={x} cy={y} r={8.5} fill={col} />
             {isRoot && <circle cx={x} cy={y} r={11} fill="none" stroke={col} strokeWidth={1.5} />}
-            <text x={x} y={y + 3.5} textAnchor="middle" fontSize={9} fontWeight={600} fill="#fff">{names[tones[i]]}</text>
+            <text x={x} y={y + 3.5} textAnchor="middle" fontSize={9} fontWeight={600} fill="var(--neck-dot-text)">{names[tones[i]]}</text>
           </g>
         );
       })}
@@ -54,34 +54,35 @@ export const SET_STRINGS: Record<SetId, number[]> = {
   "2-4": [4, 3, 2],
   "3-5": [5, 4, 3],
 };
-const STRING_NAMES = ["e", "B", "G", "D", "A", "E"]; // string 1 → 6, top to bottom
+/** String 1 → 6, top to bottom, as the neck labels them. */
+export const STRING_NAMES = ["e", "B", "G", "D", "A", "E"];
 const INLAYS = [3, 5, 7, 9, 12, 15];
 
-/** The neck up to `maxFret` (default: the whole 15 frets); frets keep their width, the map just ends sooner. */
-export function FretMap({ path, maxFret = MAX_FRET }: { path: Cand[]; maxFret?: number }) {
+/**
+ * Where the neck's strings and frets sit in the SVG. Every map that draws the neck goes through
+ * this, so they all draw the same instrument at the same size. Frets keep their width whatever
+ * `maxFret` is; the board just ends sooner.
+ */
+export function neckGeometry(maxFret: number) {
   const left = 52, right = 16, top = 16, rowH = 25;
-  const H = top + 5 * rowH + 26;
   const fw = (920 - left - right) / MAX_FRET;
-  const W = left + maxFret * fw + right;
-  const sy = (s: number) => top + (s - 1) * rowH;
-  const fx = (f: number) => (f === 0 ? left - 18 : left + (f - 0.5) * fw);
+  return {
+    left, right, top, rowH, fw,
+    W: left + maxFret * fw + right,
+    H: top + 5 * rowH + 26,
+    /** Centre line of string `s`, 1 (high e) at the top to 6 (low E) at the bottom. */
+    sy: (s: number) => top + (s - 1) * rowH,
+    /** Where a fret's dot goes; fret 0 sits behind the nut. */
+    fx: (f: number) => (f === 0 ? left - 18 : left + (f - 0.5) * fw),
+  };
+}
+
+/** The wood: inlays, fret wires, the six strings with their names, and the fret numbers underneath. */
+export function NeckBoard({ maxFret }: { maxFret: number }) {
+  const { left, right, rowH, fw, W, H, sy, fx } = neckGeometry(maxFret);
   const boardTop = sy(1), boardBot = sy(6), midY = (boardTop + boardBot) / 2;
-
-  const shapes = path.map((c) => {
-    const strings = SET_STRINGS[c.set];
-    const notes = c.frets.map((fr, j) => ({
-      x: fx(fr), y: sy(strings[j]), isRoot: c.tones[j] === c.chord.root,
-    }));
-    return { c, notes, root: notes.find((n) => n.isRoot)! };
-  });
-
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      className="mb-3 mt-1 block w-full max-w-[920px]"
-      role="img"
-      aria-label={`Fretboard map showing where ${path.map((c) => c.chord.label).join(", ")} sit on the neck, with each chord's root note marked`}
-    >
+    <>
       {INLAYS.filter((f) => f <= maxFret).map((f) => (
         <g key={`in${f}`} opacity={0.5}>
           {f === 12 ? (
@@ -107,6 +108,30 @@ export function FretMap({ path, maxFret = MAX_FRET }: { path: Cand[]; maxFret?: 
       {Array.from({ length: maxFret }, (_, i) => (
         <text key={`n${i}`} x={fx(i + 1)} y={H - 6} fontSize={10} fill="var(--neck-muted)" textAnchor="middle">{i + 1}</text>
       ))}
+    </>
+  );
+}
+
+/** The neck up to `maxFret` (default: the whole 15 frets), with a phrase's shapes on it. */
+export function FretMap({ path, maxFret = MAX_FRET }: { path: Cand[]; maxFret?: number }) {
+  const { W, H, sy, fx } = neckGeometry(maxFret);
+
+  const shapes = path.map((c) => {
+    const strings = SET_STRINGS[c.set];
+    const notes = c.frets.map((fr, j) => ({
+      x: fx(fr), y: sy(strings[j]), isRoot: c.tones[j] === c.chord.root,
+    }));
+    return { c, notes, root: notes.find((n) => n.isRoot)! };
+  });
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="mb-3 mt-1 block w-full max-w-[920px]"
+      role="img"
+      aria-label={`Fretboard map showing where ${path.map((c) => c.chord.label).join(", ")} sit on the neck, with each chord's root note marked`}
+    >
+      <NeckBoard maxFret={maxFret} />
       {shapes.map(({ c, notes }, i) => (
         <polyline key={`s${i}`} points={notes.map((n) => `${n.x},${n.y}`).join(" ")}
           fill="none" stroke={famCol(c)} strokeWidth={1.5} strokeOpacity={0.4} />
@@ -122,7 +147,7 @@ export function FretMap({ path, maxFret = MAX_FRET }: { path: Cand[]; maxFret?: 
         <g key={`r${i}`}>
           <circle cx={root.x} cy={root.y} r={10} fill={famCol(c)} />
           <circle cx={root.x} cy={root.y} r={13} fill="none" stroke={famCol(c)} strokeWidth={1.5} />
-          <text x={root.x} y={root.y + 3.5} textAnchor="middle" fontSize={9.5} fontWeight={600} fill="#fff">
+          <text x={root.x} y={root.y + 3.5} textAnchor="middle" fontSize={9.5} fontWeight={600} fill="var(--neck-dot-text)">
             {neckShort(c)}
           </text>
         </g>

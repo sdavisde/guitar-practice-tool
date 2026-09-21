@@ -6,11 +6,18 @@ const NOTE: Record<string, number> = { C:0, D:2, E:4, F:5, G:7, A:9, B:11 };
 export const KEYS = ["C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"];
 const FLAT_KEYS = new Set(["F","Bb","Eb","Ab","Db","Gb"]);
 
+/** Standard tuning: semitones from the open 6th string to each open string, string 1 (high e) first. */
+export const OPEN_PITCH = [24, 19, 15, 10, 5, 0];
+/** Pitch class of open string `s`, 1 (high e) to 6 (low E). */
+export const openString = (s: number): number => (OPEN_PITCH[s - 1] + 4) % 12;
+/** The three strings of a set, low to high, as pitch classes. `top` is the set's highest string. */
+const setOpen = (top: number) => [openString(top + 2), openString(top + 1), openString(top)];
+
 export type SetId = "1-3" | "2-4" | "3-5";
 export const SETS: Record<SetId, { open: number[]; label: string; lane: number }> = {
-  "1-3": { open: [7, 11, 4], label: "str 1–3", lane: 0 },
-  "2-4": { open: [2, 7, 11], label: "str 2–4", lane: 1 },
-  "3-5": { open: [9, 2, 7], label: "str 3–5", lane: 2 },
+  "1-3": { open: setOpen(1), label: "str 1–3", lane: 0 },
+  "2-4": { open: setOpen(2), label: "str 2–4", lane: 1 },
+  "3-5": { open: setOpen(3), label: "str 3–5", lane: 2 },
 };
 export const MAX_FRET = 15;
 
@@ -64,15 +71,24 @@ export interface Chord { root: number; q: Quality; label: string; name: string; 
 const ALT_DEG: Record<number, string> = { 1: "b2", 3: "b3", 6: "#4", 8: "b6", 10: "b7" };
 
 /**
+ * The chord the key itself builds `semi` semitones above its root: 1 and 4 and 5 major, 2 and 3
+ * and 6 minor, 7 diminished. A chromatic degree has no chord in the key, so it is assumed major,
+ * as borrowed chords (b3, b6, b7) usually are.
+ */
+export function impliedQuality(semi: number): Quality {
+  const d = DEG_SEMI.indexOf(((semi % 12) + 12) % 12);
+  return d > 0 ? DIATONIC[d] : "maj";
+}
+
+/**
  * Scale-degree label for a chord: "1", "6m", "5M", "b7" — the number plus a
- * suffix only when the quality is not the one the key already implies
- * (chromatic roots are assumed major, as borrowed chords usually are).
+ * suffix only when the quality is not the one the key already implies.
  */
 export function degreeLabel(root: number, q: Quality, ks: number): string {
   const semi = ((root - ks) % 12 + 12) % 12;
   const d = DEG_SEMI.indexOf(semi);
   const num = d > 0 ? String(d) : ALT_DEG[semi];
-  const want: Quality = d > 0 ? DIATONIC[d] : "maj";
+  const want = impliedQuality(semi);
   if (q === want) return num + (want === "min" ? "m" : want === "dim" ? "°" : "");
   return num + (QUAL[q].disp || "M");
 }

@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { KeyPicker } from "@/components/key-picker";
 import { SongIndex } from "@/components/song-index";
+import { ScaleNeck } from "@/components/scale-neck";
 import { SectionSheet } from "@/components/section-sheet";
 
 export default function Home() {
@@ -19,6 +20,9 @@ export default function Home() {
           onChangeNotation={song.setNotation} onChangeTokens={song.updateSection}
           mood={song.mood} onChangeMood={song.setMood} onRandomize={song.randomizeSong} onRandomSong={song.randomizeFullSong} />
       </div>
+
+      {/* One neck for the whole song: the key's scales, rather than a fretboard per section. */}
+      <ScaleNeck songKey={song.songKey} notation={song.notation} />
 
       <main>
         {song.sections.map((s, i) => (

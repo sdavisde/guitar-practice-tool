@@ -43,6 +43,8 @@
   --neck-ink: #eceff3;
   --neck-line: #3b434e;
   --neck-muted: #8a94a1;
+  /* Text printed inside a filled dot on the neck. */
+  --neck-dot-text: #ffffff;
 }
 
 @theme inline {
