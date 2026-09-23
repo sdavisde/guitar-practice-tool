@@ -1,7 +1,10 @@
 "use client";
-import { Fragment } from "react";
-import { Cand, PhraseUnit } from "@/lib/engine";
-import { ChordCard } from "@/components/chord-card";
+import { Fragment, useState } from "react";
+import { Cand, PhraseUnit, candKey, isUserPin } from "@/lib/engine";
+import type { VoicingContext } from "@/lib/use-section-paths";
+import { ChordCard, ChordCardButton } from "@/components/chord-card";
+import { VoicingPicker } from "@/components/voicing-picker";
+import { VoicingPickerFrame } from "@/components/voicing-picker-frame";
 import { ScissorsIcon } from "@/components/icons";
 import { Notation } from "@/lib/use-song";
 import { cn } from "@/lib/utils";
@@ -32,6 +35,19 @@ function Seam({ label, onSplit }: { label: string; onSplit: () => void }) {
   );
 }
 
+/** Lets the row's cards open the voicing picker. Without it the cards are plain. */
+export type Picking = {
+  /** Picker facts for chord `i`; asked for only while that chord's picker is open. */
+  context: (i: number) => VoicingContext;
+  /** The phrase's movement, as its chip names it. */
+  movement: string;
+  /** Pin chord `i` to a voicing (a `candKey`), or let the path decide with none. */
+  onPin: (i: number, key: string | undefined) => void;
+};
+
+/** Only a hand-picked voicing wears the dot: a held one is meant to look like the path's own choice. */
+const isPinned = (u: PhraseUnit, c: Cand) => isUserPin(u) && candKey(c) === u.pin;
+
 type Props = {
   path: Cand[];
   units: PhraseUnit[];
@@ -39,10 +55,12 @@ type Props = {
   notation: Notation;
   /** Cut the phrase before chord `i` of the path. */
   onSplit: (i: number) => void;
+  picking?: Picking;
 };
 
 /** A phrase's shapes in a row, with a seam between each pair of cards to cut the phrase there. */
-export function ChordRow({ path, units, names, notation, onSplit }: Props) {
+export function ChordRow({ path, units, names, notation, onSplit, picking }: Props) {
+  const [open, setOpen] = useState<number | null>(null);
   const seams = path.length > 1;
   const label = (c: Cand) => (notation === "numbers" ? c.chord.degree : c.chord.name);
   return (
@@ -50,7 +68,24 @@ export function ChordRow({ path, units, names, notation, onSplit }: Props) {
       {path.map((c, i) => (
         <Fragment key={i}>
           {seams && i > 0 && <Seam label={label(c)} onSplit={() => onSplit(i)} />}
-          <ChordCard cand={c} names={names} notation={notation} role={units[i].role} />
+          {!picking ? (
+            <ChordCard cand={c} names={names} notation={notation} role={units[i].role} />
+          ) : (
+            <VoicingPickerFrame
+              open={open === i}
+              onOpenChange={(next) => setOpen(next ? i : null)}
+              title={`Voicing for ${c.chord.degree}, ${c.chord.name}`}
+              trigger={<ChordCardButton cand={c} names={names} notation={notation} role={units[i].role} pinned={isPinned(units[i], c)} />}
+            >
+              {(layout) => (
+                <VoicingPicker
+                  unit={units[i]} current={c} context={picking.context(i)} names={names} notation={notation}
+                  movement={picking.movement} after={path.length - 1 - i} layout={layout}
+                  onPin={(key) => picking.onPin(i, key)} onClose={() => setOpen(null)}
+                />
+              )}
+            </VoicingPickerFrame>
+          )}
         </Fragment>
       ))}
     </div>

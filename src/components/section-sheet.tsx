@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
-import { Section, RepeatMode, noteNames, hasManual, DEFAULT_STRATEGY } from "@/lib/engine";
-import { useSectionPaths, unitLabel } from "@/lib/use-section-paths";
+import { Section, RepeatMode, noteNames, hasManual, phraseHasPins, DEFAULT_STRATEGY } from "@/lib/engine";
+import { heldBefore, useSectionPaths, unitLabel, voicingContext } from "@/lib/use-section-paths";
 import { ChordRow } from "@/components/chord-row";
 import { MovementChips, MOVEMENTS } from "@/components/movement-chips";
 import { RepeatToggle } from "@/components/repeat-toggle";
@@ -22,19 +22,23 @@ type Props = {
   onStrategy: (id: string) => void;
   onPhraseStrategy: (phraseIndex: number, id: string | undefined) => void;
   onRepeat: (mode: RepeatMode) => void;
+  /** Pin the chord at `slotIndex` to a voicing, or unpin it with no key. `hold` holds the chords before it where they are. */
+  onPin: (slotIndex: number, key: string | undefined, hold: Map<number, string>) => void;
+  onClearPins: (phraseIndex: number) => void;
 };
 
-export function SectionSheet({ section, songKey, index, notation, onSplit, onJoin, onRedetect, onStrategy, onPhraseStrategy, onRepeat }: Props) {
+export function SectionSheet({ section, songKey, index, notation, onSplit, onJoin, onRedetect, onStrategy, onPhraseStrategy, onRepeat, onPin, onClearPins }: Props) {
   const [alt, setAlt] = useState(0);
   const [roll, setRoll] = useState(0);
 
   const names = noteNames(songKey);
-  const { plans, results, errors, chordCount, patternSize, hasPattern, occurrence, offsets, anyWander, maxCount } =
-    useSectionPaths(section, songKey, alt, roll);
+  const paths = useSectionPaths(section, songKey, alt, roll);
+  const { plans, results, errors, chordCount, patternSize, hasPattern, occurrence, offsets, anyWander, maxCount } = paths;
 
   const sectionStrategy = section.strategyId ?? DEFAULT_STRATEGY;
   const multi = section.phrases.length > 1;
-  const movementName = (id: string) => (MOVEMENTS.find((m) => m.id === id)?.name ?? id).toLowerCase();
+  const movement = (id: string) => MOVEMENTS.find((m) => m.id === id)?.name ?? id;
+  const movementName = (id: string) => movement(id).toLowerCase();
 
   return (
     <section id={`section-${index}`} className="grid grid-cols-1 gap-6 border-t border-border pt-8 pb-10 scroll-mt-4 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-10 [&>*]:min-w-0">
@@ -108,13 +112,24 @@ export function SectionSheet({ section, songKey, index, notation, onSplit, onJoi
                 </div>
               )}
               {!path ? (
-                <p className="max-w-[60ch] py-1 text-sm text-text-secondary">{fail ?? "No path found for this phrase."}</p>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1">
+                  <p className="max-w-[60ch] text-sm text-text-secondary">{fail ?? "No path found for this phrase."}</p>
+                  {phraseHasPins(phrase) && (
+                    <Button variant="outline" className="h-[30px] px-3 text-[13px]" onClick={() => onClearPins(p)}>Unpin this phrase&apos;s shapes</Button>
+                  )}
+                </div>
               ) : (
                 <>
                   {/* No neck here: the one above the song carries the fretboard now. With several
                       phrases the row above already names the phrase and its movement. */}
                   {!multi && <Label>{`${fig} · ${section.name}, ${movementName(strategyId)}`}</Label>}
-                  <ChordRow path={path} units={units} names={names} notation={notation} onSplit={(i) => onSplit(offsets[p] + units[i].slot)} />
+                  <ChordRow path={path} units={units} names={names} notation={notation} onSplit={(i) => onSplit(offsets[p] + units[i].slot)}
+                    picking={{
+                      context: (i) => voicingContext(section, songKey, paths, alt, p, i),
+                      movement: movement(strategyId),
+                      onPin: (i, key) => onPin(offsets[p] + units[i].slot, key, heldBefore(paths, p, i)),
+                    }}
+                  />
                 </>
               )}
             </div>

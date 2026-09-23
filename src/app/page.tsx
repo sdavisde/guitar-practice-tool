@@ -38,6 +38,8 @@ export default function Home() {
             onStrategy={(id) => song.setSectionStrategy(i, id)}
             onPhraseStrategy={(p, id) => song.setPhraseStrategy(i, p, id)}
             onRepeat={(mode) => song.setRepeat(i, mode)}
+            onPin={(slotIndex, voicing, hold) => song.pinVoicing(i, slotIndex, voicing, hold)}
+            onClearPins={(phraseIndex) => song.clearPins(i, phraseIndex)}
           />
         ))}
       </main>

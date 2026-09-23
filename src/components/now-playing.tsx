@@ -1,10 +1,12 @@
 "use client";
-import { Section, RepeatMode, noteNames } from "@/lib/engine";
-import { useSectionPaths, phraseView } from "@/lib/use-section-paths";
+import { Section, RepeatMode, noteNames, phraseHasPins } from "@/lib/engine";
+import { heldBefore, useSectionPaths, phraseView, voicingContext } from "@/lib/use-section-paths";
 import { ChordRow } from "@/components/chord-row";
 import { NowPlayingControls } from "@/components/now-playing-controls";
 import { NowPlayingFigure } from "@/components/now-playing-figure";
+import { MOVEMENTS } from "@/components/movement-chips";
 import { Label } from "@/components/label";
+import { Button } from "@/components/ui/button";
 import type { Notation } from "@/lib/use-song";
 
 export type NowPlayingProps = {
@@ -21,10 +23,13 @@ export type NowPlayingProps = {
   onRepeat: (mode: RepeatMode) => void;
   onJoin: (phraseIndex: number) => void;
   onSplit: (slotIndex: number) => void;
+  /** Pin the chord at `slotIndex` to a voicing, or unpin it with no key. `hold` holds the chords before it where they are. */
+  onPin: (slotIndex: number, key: string | undefined, hold: Map<number, string>) => void;
+  onClearPins: (phraseIndex: number) => void;
 };
 
 /** The selected phrase's words, its movement controls, a close-up of the neck and its shapes. */
-export function NowPlaying({ section, index, phraseIndex, songKey, notation, alt, roll, onReroll, onStrategy, onPhraseStrategy, onRepeat, onJoin, onSplit }: NowPlayingProps) {
+export function NowPlaying({ section, index, phraseIndex, songKey, notation, alt, roll, onReroll, onStrategy, onPhraseStrategy, onRepeat, onJoin, onSplit, onPin, onClearPins }: NowPlayingProps) {
   const names = noteNames(songKey);
   const paths = useSectionPaths(section, songKey, alt, roll);
   const { hasPattern, offsets, anyWander, maxCount } = paths;
@@ -56,11 +61,22 @@ export function NowPlaying({ section, index, phraseIndex, songKey, notation, alt
       />
 
       {!path ? (
-        <p className="max-w-[60ch] py-1 text-sm text-text-secondary">{fail ?? "No path found for this phrase."}</p>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1">
+          <p className="max-w-[60ch] text-sm text-text-secondary">{fail ?? "No path found for this phrase."}</p>
+          {phrase && phraseHasPins(phrase) && (
+            <Button variant="outline" className="h-[30px] px-3 text-[13px]" onClick={() => onClearPins(phraseIndex)}>Unpin this phrase&apos;s shapes</Button>
+          )}
+        </div>
       ) : (
         <>
           <NowPlayingFigure path={path} maxFret={maxFret} />
-          <ChordRow path={path} units={units} names={names} notation={notation} onSplit={(i) => onSplit(offsets[phraseIndex] + units[i].slot)} />
+          <ChordRow path={path} units={units} names={names} notation={notation} onSplit={(i) => onSplit(offsets[phraseIndex] + units[i].slot)}
+            picking={{
+              context: (i) => voicingContext(section, songKey, paths, alt, phraseIndex, i),
+              movement: MOVEMENTS.find((m) => m.id === paths.results[phraseIndex]?.strategyId)?.name ?? "",
+              onPin: (i, key) => onPin(offsets[phraseIndex] + units[i].slot, key, heldBefore(paths, phraseIndex, i)),
+            }}
+          />
         </>
       )}
     </aside>

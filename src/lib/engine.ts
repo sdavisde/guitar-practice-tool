@@ -262,6 +262,8 @@ export interface PathOpts {
 }
 
 export const sameCand = (a: Cand, b: Cand) => a.set === b.set && a.frets.every((f, i) => f === b.frets[i]);
+/** A voicing's identity as a string ("1-3:5-5-3"): what a hand-picked shape is stored as. */
+export const candKey = (c: Cand): string => `${c.set}:${c.frets.join("-")}`;
 const near = (a: Cand, b: Cand) => move(a, b) + setPen(a, b);
 const SEAM = 0.5;       // weight of the pull toward the previous phrase's last voicing
 const AVOID_PEN = 3;    // "vary": cost of reusing the previous occurrence's voicing...
@@ -347,8 +349,14 @@ export function randomPath(lists: Cand[][], pin?: (Cand | undefined)[]): Cand[] 
 
 export type Origin = "detected" | "manual";
 
-/** One chord token in a section. `bar` marks the first chord of a bar when the chart said so. */
-export interface Slot { token: string; role: Role; bar?: boolean }
+/**
+ * One chord token in a section. `bar` marks the first chord of a bar when the chart said so.
+ * `pin` is a voicing this chord is fixed to (a `candKey`); the path is solved around it. Without
+ * `held` the player chose it by hand; with `held` the app wrote it to keep the chord where it
+ * already was, so a hand-picked pin later in the phrase can't move the chords before it. A pin
+ * that names no voicing of the chord (the key changed) is simply ignored.
+ */
+export interface Slot { token: string; role: Role; bar?: boolean; pin?: string; held?: boolean }
 
 /**
  * The unit a path is chosen for. Phrases that instance the same repeated progression share a
@@ -410,9 +418,29 @@ export function sectionFromTokens(name: string, tokens: string[], key: string, o
 export function redetectSection(section: Section, key: string): Section {
   const slots = sectionSlots(section);
   const bars = slots.map((s) => !!s.bar);
-  return sectionFromTokens(section.name, slots.map((s) => s.token), key, {
+  return releaseHeldPins(carryPins(slots, sectionFromTokens(section.name, slots.map((s) => s.token), key, {
     bars: bars.some(Boolean) ? bars : undefined, strategyId: section.strategyId, repeat: section.repeat, lyrics: section.lyrics,
-  });
+  })));
+}
+
+/**
+ * Rebuilding a section makes fresh slots. A hand-picked voicing follows its chord across the
+ * rebuild when the chord count is unchanged and the chord at that position is still the same
+ * token; a retyped chord drops its pin, and a section that grew or shrank drops them all.
+ */
+function carryPins(old: Slot[], next: Section): Section {
+  if (!old.some((s) => s.pin) || sectionSlots(next).length !== old.length) return next;
+  let i = 0;
+  return {
+    ...next,
+    phrases: next.phrases.map((p) => ({
+      ...p,
+      slots: p.slots.map((s) => {
+        const o = old[i++];
+        return o.pin && o.token === s.token ? { ...s, ...pinOf(o) } : s;
+      }),
+    })),
+  };
 }
 
 /**
@@ -425,15 +453,116 @@ export function retokenizeSection(section: Section, tokens: string[], key: strin
   const sameLength = old.length === tokens.length;
   if (hasManual(section) && sameLength) {
     let i = 0;
-    return { ...section, phrases: section.phrases.map((p) => ({ ...p, slots: p.slots.map((s) => ({ ...s, token: tokens[i++] })) })) };
+    const retype = (slot: Slot): Slot => {
+      const { pin: _drop, held: _held, ...s } = slot;
+      const token = tokens[i++];
+      return slot.pin && token === s.token ? { ...s, ...pinOf(slot) } : { ...s, token };
+    };
+    return releaseHeldPins({ ...section, phrases: section.phrases.map((p) => ({ ...p, slots: p.slots.map(retype) })) });
   }
   const bars = old.map((s) => !!s.bar);
-  return sectionFromTokens(section.name, tokens, key, {
+  return releaseHeldPins(carryPins(old, sectionFromTokens(section.name, tokens, key, {
     bars: sameLength && bars.some(Boolean) ? bars : undefined,
     strategyId: section.strategyId, repeat: section.repeat,
     lyrics: sameLength ? section.lyrics : undefined,
-  });
+  })));
 }
+
+/** A slot's pin as something to spread, so a rebuilt slot keeps the voicing *and* how it got there. */
+const pinOf = (s: Pick<Slot, "pin" | "held">): Pick<Slot, "pin" | "held"> =>
+  s.pin ? (s.held ? { pin: s.pin, held: true } : { pin: s.pin }) : {};
+
+/** This chord sits on a voicing the player chose by hand, not one the app is holding for them. */
+export const isUserPin = (s: Pick<Slot, "pin" | "held">): boolean => !!s.pin && !s.held;
+
+/** Drop a slot's pin, of either kind. */
+const unpinned = ({ pin: _drop, held: _held, ...s }: Slot): Slot => s;
+
+/**
+ * Pin the chord at `slotIndex` (an index into the section's slots) to a voicing, or let it go with
+ * no `key`. The pin becomes the player's: pinning a held voicing by hand makes it theirs.
+ */
+export function setSlotPin(section: Section, slotIndex: number, key: string | undefined): Section {
+  let i = 0;
+  return {
+    ...section,
+    phrases: section.phrases.map((p) => ({
+      ...p,
+      slots: p.slots.map((s) => {
+        if (i++ !== slotIndex) return s;
+        const rest = unpinned(s);
+        return key ? { ...rest, pin: key } : rest;
+      }),
+    })),
+  };
+}
+
+/**
+ * Hold chords where they already are: `hold` maps a slot index to the voicing showing there now.
+ * Only chords with no pin of their own are held — a hand-picked voicing is never written over.
+ */
+export function holdSlots(section: Section, hold: Map<number, string>): Section {
+  if (!hold.size) return section;
+  let i = 0;
+  return {
+    ...section,
+    phrases: section.phrases.map((p) => ({
+      ...p,
+      slots: p.slots.map((s) => {
+        const key = hold.get(i++);
+        return key && !s.pin ? { ...s, pin: key, held: true } : s;
+      }),
+    })),
+  };
+}
+
+/**
+ * Let go of every held voicing that no longer sits before a hand-picked one in its phrase: holding
+ * it was only ever there to stop that pin moving the chords before it. With the last hand-picked
+ * pin gone, the phrase is back on the engine's free path.
+ */
+export function releaseHeldPins(section: Section): Section {
+  if (!section.phrases.some((p) => p.slots.some((s) => s.held))) return section;
+  return {
+    ...section,
+    phrases: section.phrases.map((p) => {
+      let last = -1;
+      p.slots.forEach((s, i) => { if (isUserPin(s)) last = i; });
+      return { ...p, slots: p.slots.map((s, i) => (s.held && i > last ? unpinned(s) : s)) };
+    }),
+  };
+}
+
+/** Let go of every held voicing, in one phrase or across the section. Hand-picked pins stay. */
+export function clearHeldPins(section: Section, phraseIndex?: number): Section {
+  return {
+    ...section,
+    phrases: section.phrases.map((p, k) => (phraseIndex !== undefined && k !== phraseIndex
+      ? p
+      : { ...p, slots: p.slots.map((s) => (s.held ? unpinned(s) : s)) })),
+  };
+}
+
+/**
+ * The player pinned the chord at `slotIndex` by hand, or let it go with no `key`. `hold` names the
+ * voicing each chord of the phrase shows right now (slot index → `candKey`): the unpinned ones
+ * before the pin are held there first, so pinning can never move a chord earlier in the phrase —
+ * only the chords after it re-path. Held voicings the remaining pins no longer need are let go.
+ */
+export function pinSlot(section: Section, slotIndex: number, key: string | undefined, hold?: Map<number, string>): Section {
+  const earlier = key && hold ? new Map([...hold].filter(([i]) => i < slotIndex)) : undefined;
+  return releaseHeldPins(setSlotPin(earlier ? holdSlots(section, earlier) : section, slotIndex, key));
+}
+
+/** Let go of every fixed voicing in one phrase, held or hand-picked: the way out when a pin leaves the movement no path. */
+export function clearPhrasePins(section: Section, phraseIndex: number): Section {
+  return {
+    ...section,
+    phrases: section.phrases.map((p, k) => (k === phraseIndex ? { ...p, slots: p.slots.map(unpinned) } : p)),
+  };
+}
+
+export const phraseHasPins = (p: Phrase): boolean => p.slots.some((s) => !!s.pin);
 
 /**
  * Where the words go: for each phrase, the lyric lines sung over it. A line whose chords were
@@ -542,7 +671,8 @@ export function splitPhraseAt(section: Section, slotIndex: number): Section {
     }
     off -= p.slots.length;
   }
-  return done ? { ...section, phrases } : section;
+  // A cut can leave a held voicing in a phrase with no hand-picked pin after it; let those go.
+  return done ? releaseHeldPins({ ...section, phrases }) : section;
 }
 
 /** Merge phrase `phraseIndex` into the one before it. */
@@ -550,7 +680,7 @@ export function joinPhraseAt(section: Section, phraseIndex: number): Section {
   const a = section.phrases[phraseIndex - 1], b = section.phrases[phraseIndex];
   if (!a || !b) return section;
   const phrases = [...section.phrases.slice(0, phraseIndex - 1), manual(a, [...a.slots, ...b.slots]), ...section.phrases.slice(phraseIndex + 1)];
-  return { ...section, phrases };
+  return releaseHeldPins({ ...section, phrases });
 }
 
 // ---- phrase detection ----
@@ -719,8 +849,8 @@ export function detectPhrases(tokens: string[], key: string, opts: DetectOpts = 
 
 // ---- solving a section ----
 
-/** One shape to find: a chord and its role, mapped back to the slot(s) it came from. */
-export interface PhraseUnit { chord: Chord; role: Role; slot: number; span: number }
+/** One shape to find: a chord and its role, mapped back to the slot(s) it came from. `pin`/`held` are its first slot's. */
+export interface PhraseUnit { chord: Chord; role: Role; slot: number; span: number; pin?: string; held?: boolean }
 export interface PhrasePlan { units: PhraseUnit[]; errors: string[] }
 
 const sameChord = (a: Chord, b: Chord) => a.root === b.root && a.q === b.q;
@@ -735,7 +865,7 @@ export function planPhrase(phrase: Phrase, key: string): PhrasePlan {
     const chord = chords[ci++];
     const last = units[units.length - 1];
     if (last && last.slot + last.span === i && last.role === s.role && sameChord(last.chord, chord)) { last.span++; return; }
-    units.push({ chord, role: s.role, slot: i, span: 1 });
+    units.push({ chord, role: s.role, slot: i, span: 1, ...pinOf(s) });
   });
   return { units, errors };
 }
@@ -745,7 +875,11 @@ export interface PhraseResult { path: Cand[] | null; count: number; strategyId: 
 /**
  * Choose a path for every phrase in turn. Each phrase starts near where the last one ended;
  * repeats of a pattern are pinned to the first occurrence ("same") or pushed away from the
- * previous one ("vary"). `alt` picks among each phrase's K-best alternatives.
+ * previous one ("vary"). A slot's own pin — hand-picked or held — outranks both. `alt` picks
+ * among each phrase's K-best alternatives.
+ *
+ * Phrases are solved front to back and each one only ever reads the phrase before it (the seam
+ * pull, `opts.prev`), so nothing done to one phrase can move an earlier one.
  */
 export function solveSection(section: Section, plans: PhrasePlan[], opts: { alt: number; K: number }): PhraseResult[] {
   const mode = section.repeat ?? DEFAULT_REPEAT;
@@ -764,7 +898,9 @@ export function solveSection(section: Section, plans: PhrasePlan[], opts: { alt:
       let j = 0;
       return roles.map((r) => (r === "structural" ? src[j++] : undefined));
     };
-    const pin = pid && mode === "same" ? byPos(first.get(pid)) : undefined;
+    const same = pid && mode === "same" ? byPos(first.get(pid)) : undefined;
+    const fixed = units.map((u, k) => (u.pin ? lists[k].find((c) => candKey(c) === u.pin) : undefined));
+    const pin = fixed.some(Boolean) || same ? units.map((_, k) => fixed[k] ?? same?.[k]) : undefined;
     const avoid = pid && mode === "vary" ? byPos(last.get(pid)) : undefined;
     let path: Cand[] | null = null, count = 0, fail: string | undefined;
     if (sid === WANDER_ID) {

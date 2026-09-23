@@ -2,14 +2,15 @@
 import { useEffect, useRef } from "react";
 import type { TouchEvent } from "react";
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, ChevronUpIcon } from "lucide-react";
-import { Section, noteNames } from "@/lib/engine";
-import { useSectionPaths, phraseView } from "@/lib/use-section-paths";
+import { Section, noteNames, phraseHasPins } from "@/lib/engine";
+import { heldBefore, useSectionPaths, phraseView, voicingContext } from "@/lib/use-section-paths";
 import { Position, stepPhrase, swipeDirection } from "@/lib/play-navigation";
 import { ChordCard } from "@/components/chord-card";
 import { ChordRow } from "@/components/chord-row";
 import { NowPlayingControls } from "@/components/now-playing-controls";
 import { NowPlayingFigure } from "@/components/now-playing-figure";
 import type { NowPlayingProps } from "@/components/now-playing";
+import { MOVEMENTS } from "@/components/movement-chips";
 import { Button } from "@/components/ui/button";
 
 type Props = NowPlayingProps & {
@@ -31,7 +32,7 @@ const noFail = "No path found for this phrase.";
  */
 export function NowPlayingDock({
   section, index, phraseIndex, songKey, notation, alt, roll,
-  onReroll, onStrategy, onPhraseStrategy, onRepeat, onJoin, onSplit,
+  onReroll, onStrategy, onPhraseStrategy, onRepeat, onJoin, onSplit, onPin, onClearPins,
   sections, current, expanded, onExpandedChange, onSelect, onHeight,
 }: Props) {
   const names = noteNames(songKey);
@@ -115,11 +116,22 @@ export function NowPlayingDock({
               onJoin={onJoin}
             />
             {!path ? (
-              <p className="max-w-[60ch] py-1 text-sm text-text-secondary">{fail ?? noFail}</p>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1">
+                <p className="max-w-[60ch] text-sm text-text-secondary">{fail ?? noFail}</p>
+                {phrase && phraseHasPins(phrase) && (
+                  <Button variant="outline" className="h-11 px-3 text-[13px]" onClick={() => onClearPins(phraseIndex)}>Unpin this phrase&apos;s shapes</Button>
+                )}
+              </div>
             ) : (
               <>
                 <NowPlayingFigure path={path} maxFret={maxFret} />
-                <ChordRow path={path} units={units} names={names} notation={notation} onSplit={(i) => onSplit(offsets[phraseIndex] + units[i].slot)} />
+                <ChordRow path={path} units={units} names={names} notation={notation} onSplit={(i) => onSplit(offsets[phraseIndex] + units[i].slot)}
+                  picking={{
+                    context: (i) => voicingContext(section, songKey, paths, alt, phraseIndex, i),
+                    movement: MOVEMENTS.find((m) => m.id === paths.results[phraseIndex]?.strategyId)?.name ?? "",
+                    onPin: (i, key) => onPin(offsets[phraseIndex] + units[i].slot, key, heldBefore(paths, phraseIndex, i)),
+                  }}
+                />
               </>
             )}
           </div>

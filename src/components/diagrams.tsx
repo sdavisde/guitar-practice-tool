@@ -1,4 +1,7 @@
-import { Cand, QUAL, SetId, MAX_FRET } from "@/lib/engine";
+import { Cand, QUAL, MAX_FRET } from "@/lib/engine";
+import { SET_STRINGS } from "@/lib/voicings";
+
+export { SET_STRINGS };
 
 export const FAM_COLOR: Record<string, string> = {
   maj: "var(--fam-maj)", min: "var(--fam-min)", dim: "var(--fam-dim)", sus: "var(--fam-sus)",
@@ -41,19 +44,14 @@ export function ChordDiagram({ cand, names }: { cand: Cand; names: string[] }) {
   );
 }
 
-function neckShort(c: Cand): string {
-  const m = c.chord.label.match(/^([#b]?[1-7]|[A-G][#b]?)/);
-  const base = m ? m[1] : c.chord.label;
+/** A chord's label as it fits in a root dot: "1", "6m", "7°". Reads `text` (default: the label as typed). */
+export function neckShort(c: Cand, text: string = c.chord.label): string {
+  const m = text.match(/^([#b]?[1-7]|[A-G][#b]?)/);
+  const base = m ? m[1] : text;
   const f = QUAL[c.chord.q].fam;
   return base + (f === "min" ? "m" : f === "dim" ? "°" : "");
 }
 
-// Which real string each index of a cand's frets/tones sits on. String 1 = high e.
-export const SET_STRINGS: Record<SetId, number[]> = {
-  "1-3": [3, 2, 1],
-  "2-4": [4, 3, 2],
-  "3-5": [5, 4, 3],
-};
 /** String 1 → 6, top to bottom, as the neck labels them. */
 export const STRING_NAMES = ["e", "B", "G", "D", "A", "E"];
 const INLAYS = [3, 5, 7, 9, 12, 15];

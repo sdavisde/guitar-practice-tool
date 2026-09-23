@@ -1,6 +1,9 @@
 "use client";
 import { useMemo } from "react";
-import { Cand, Section, Phrase, PhrasePlan, PhraseResult, PhraseUnit, MAX_FRET, lyricText, phraseLyrics, planPhrase, solveSection, WANDER_ID } from "@/lib/engine";
+import {
+  Cand, Section, Phrase, PhrasePlan, PhraseResult, PhraseUnit, MAX_FRET, STRATEGIES, candKey, candidates, holdSlots,
+  isUserPin, lyricText, phraseLyrics, planPhrase, setSlotPin, solveSection, WANDER_ID,
+} from "@/lib/engine";
 import type { Notation } from "@/lib/use-song";
 
 /** How many alternatives the solver keeps per phrase; "Re-roll" cycles through them. */
@@ -86,6 +89,76 @@ export function solveSectionPaths(section: Section, plans: PhrasePlan[], alt: nu
     anyWander: results.some((r) => r.strategyId === WANDER_ID),
     maxCount: Math.max(0, ...results.map((r) => r.count)),
   };
+}
+
+/** What the voicing picker needs to know about one chord of a solved phrase. */
+export interface VoicingContext {
+  /** The voicing played just before: earlier in the phrase, else where the previous phrase ended. */
+  prev: Cand | undefined;
+  /** What the engine would choose here with this chord unpinned (every other pin kept). None while wandering. */
+  pathPick: Cand | undefined;
+  /** Voicings that would leave the phrase's movement no path (Climb, Descend), as `candKey`s. */
+  blocked: Set<string>;
+  /** True when the voicing on the path is there because the player pinned it by hand (a held one doesn't count). */
+  pinned: boolean;
+}
+
+const resolve = (section: Section, songKey: string, alt: number) =>
+  solveSection(section, section.phrases.map((p) => planPhrase(p, songKey)), { alt, K });
+
+/**
+ * The voicing every unpinned chord before `unitIndex` is showing now, by section-wide slot index.
+ * Pinning that chord holds them there, so the pin only ever re-paths the chords after it.
+ */
+export function heldBefore(
+  paths: Pick<SectionPaths, "plans" | "results" | "offsets">, phraseIndex: number, unitIndex: number,
+): Map<number, string> {
+  const hold = new Map<number, string>();
+  const units = paths.plans[phraseIndex]?.units ?? [];
+  const path = paths.results[phraseIndex]?.path;
+  if (path) {
+    for (let k = 0; k < unitIndex && k < units.length; k++) {
+      if (!units[k].pin && path[k]) hold.set(paths.offsets[phraseIndex] + units[k].slot, candKey(path[k]));
+    }
+  }
+  return hold;
+}
+
+/**
+ * Picker facts for chord `unitIndex` of phrase `phraseIndex`. It re-solves the section once
+ * without this chord's pin, and once per voicing when the movement has a hard rule a pin could
+ * break — a dozen small solves, done only while a picker is open.
+ */
+export function voicingContext(
+  section: Section, songKey: string, paths: Pick<SectionPaths, "plans" | "results" | "offsets">, alt: number,
+  phraseIndex: number, unitIndex: number,
+): VoicingContext {
+  const { plans, results, offsets } = paths;
+  const unit = plans[phraseIndex]?.units[unitIndex];
+  const path = results[phraseIndex]?.path ?? null;
+  const current = path?.[unitIndex];
+  let prev = unitIndex > 0 ? path?.[unitIndex - 1] : undefined;
+  for (let p = phraseIndex - 1; !prev && unitIndex === 0 && p >= 0; p--) prev = results[p]?.path?.at(-1);
+  const none: VoicingContext = { prev, pathPick: undefined, blocked: new Set(), pinned: false };
+  if (!unit || !current) return none;
+
+  const slot = offsets[phraseIndex] + unit.slot;
+  const sid = results[phraseIndex].strategyId;
+  const pinned = isUserPin(unit) && candKey(current) === unit.pin;
+  const pathPick = !unit.pin
+    ? current
+    : sid === WANDER_ID ? undefined : resolve(setSlotPin(section, slot, undefined), songKey, alt)[phraseIndex]?.path?.[unitIndex];
+
+  const blocked = new Set<string>();
+  if (STRATEGIES.find((s) => s.id === sid)?.ok) {
+    // Judged with the chords before this one held where they are, which is what picking here does.
+    const frozen = holdSlots(section, heldBefore(paths, phraseIndex, unitIndex));
+    for (const c of candidates(unit.chord)) {
+      const key = candKey(c);
+      if (!resolve(setSlotPin(frozen, slot, key), songKey, alt)[phraseIndex]?.path) blocked.add(key);
+    }
+  }
+  return { prev, pathPick, blocked, pinned };
 }
 
 /**

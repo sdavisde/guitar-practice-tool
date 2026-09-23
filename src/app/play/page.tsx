@@ -69,6 +69,8 @@ export default function Play() {
     onRepeat: (mode: RepeatMode) => { song.setRepeat(current.section, mode); patchRoll(current.section, (r) => ({ ...r, alt: 0 })); },
     onJoin: (p: number) => song.joinPhrase(current.section, p),
     onSplit: (slotIndex: number) => song.splitPhrase(current.section, slotIndex),
+    onPin: (slotIndex: number, voicing: string | undefined, hold: Map<number, string>) => song.pinVoicing(current.section, slotIndex, voicing, hold),
+    onClearPins: (p: number) => song.clearPins(current.section, p),
   };
 
   return (

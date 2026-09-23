@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Section, Phrase, Slot, RepeatMode, LyricLine, LyricSegment, chartToSections, sectionFromTokens, plainPhrase,
-  splitPhraseAt, joinPhraseAt, redetectSection, retokenizeSection,
+  splitPhraseAt, joinPhraseAt, redetectSection, retokenizeSection, pinSlot, clearHeldPins, clearPhrasePins,
 } from "@/lib/engine";
 import { DEFAULT_MOOD, MoodId, MOODS, moodById, randomKey, randomProgression, randomSong } from "@/lib/random-progression";
 
@@ -40,7 +40,11 @@ const isRecord = (x: unknown): x is Record<string, unknown> => !!x && typeof x =
 
 function isSlot(x: unknown): x is Slot {
   return isRecord(x) && typeof x.token === "string" && (x.role === "structural" || x.role === "passing")
-    && (x.bar === undefined || typeof x.bar === "boolean");
+    && (x.bar === undefined || typeof x.bar === "boolean")
+    // Added after v2 shipped; older payloads simply lack them. A pin without `held` is the
+    // player's own, which is what every payload written before holding existed meant.
+    && (x.pin === undefined || typeof x.pin === "string")
+    && (x.held === undefined || typeof x.held === "boolean");
 }
 
 function isPhrase(x: unknown): x is Phrase {
@@ -59,7 +63,8 @@ function isLine(x: unknown): x is LyricLine {
   return isRecord(x) && Array.isArray(x.segments) && x.segments.every(isSegment);
 }
 
-function isSection(x: unknown): x is Section {
+/** Exported so the tests can put a stored section through the same gate a reload does. */
+export function isSection(x: unknown): x is Section {
   return isRecord(x) && typeof x.name === "string" && Array.isArray(x.phrases) && x.phrases.every(isPhrase)
     && (x.strategyId === undefined || typeof x.strategyId === "string")
     && (x.repeat === undefined || x.repeat === "same" || x.repeat === "vary")
@@ -202,20 +207,38 @@ export function useSong() {
     patch(index, (s) => redetectSection(s, songKey));
   }, [patch, songKey]);
 
-  /** The section's movement; clears any per-phrase overrides so the choice visibly applies. */
+  /**
+   * The section's movement; clears any per-phrase overrides so the choice visibly applies. Held
+   * voicings go too: they were the old movement's path, and keeping them would often leave Climb
+   * or Descend no path at all. Hand-picked pins stay, as they always have.
+   */
   const setSectionStrategy = useCallback((index: number, strategyId: string) => {
-    patch(index, (s) => ({ ...s, strategyId, phrases: s.phrases.map(({ strategyId: _drop, ...p }) => p) }));
+    patch(index, (s) => clearHeldPins({ ...s, strategyId, phrases: s.phrases.map(({ strategyId: _drop, ...p }) => p) }));
   }, [patch]);
 
   const setPhraseStrategy = useCallback((index: number, phraseIndex: number, strategyId: string | undefined) => {
-    patch(index, (s) => ({
+    patch(index, (s) => clearHeldPins({
       ...s,
       phrases: s.phrases.map((p, k) => {
         if (k !== phraseIndex) return p;
         const { strategyId: _drop, ...rest } = p;
         return strategyId ? { ...rest, strategyId } : rest;
       }),
-    }));
+    }, phraseIndex));
+  }, [patch]);
+
+  /**
+   * Pin the chord at `slotIndex` (an index into the section's chords) to a voicing; no `key` lets
+   * it go. `hold` names the voicing each chord of that phrase shows right now, so the ones before
+   * the pin can be held where they are and only the chords after it re-path.
+   */
+  const pinVoicing = useCallback((index: number, slotIndex: number, key: string | undefined, hold?: Map<number, string>) => {
+    patch(index, (s) => pinSlot(s, slotIndex, key, hold));
+  }, [patch]);
+
+  /** Let go of every fixed voicing in one phrase, held or hand-picked. */
+  const clearPins = useCallback((index: number, phraseIndex: number) => {
+    patch(index, (s) => clearPhrasePins(s, phraseIndex));
   }, [patch]);
 
   const setRepeat = useCallback((index: number, repeat: RepeatMode) => {
@@ -269,7 +292,7 @@ export function useSong() {
 
   return {
     ready, songKey, setSongKey, sections, imported, meta, updateSection,
-    splitPhrase, joinPhrase, redetect, setSectionStrategy, setPhraseStrategy, setRepeat,
+    splitPhrase, joinPhrase, redetect, setSectionStrategy, setPhraseStrategy, setRepeat, pinVoicing, clearPins,
     importChart, randomizeSong, randomizeFullSong, mood, setMood, clearSong, notation, setNotation,
   };
 }
